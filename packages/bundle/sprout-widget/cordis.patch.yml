@@ -1,0 +1,16 @@
+# dsh-sprout-widget bundle patch: mounts a single draggable sprout status row on
+# top of the web surface. The row injects a `<script>` into the served index.html
+# (through the webServer service's index tap) and serves the client sprite + a
+# tiny status endpoint.
+#
+# Enable it in a profile with:
+#   dsh plugin --profile web add @deepseek-ai/dsh-sprout-widget
+# or:
+#   dsh plugin --profile desktop add @deepseek-ai/dsh-sprout-widget
+#
+# The row needs the webServer service, so it pairs with the dsh-web-app bundle
+# layer (the browser-surface patch over dsh-base).
+
+- insert:
+    - id: sprout-widget
+      name: '@deepseek-ai/dsh-sprout-widget'

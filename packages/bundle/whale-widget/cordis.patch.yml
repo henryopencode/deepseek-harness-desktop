@@ -1,0 +1,12 @@
+# dsh-whale-widget bundle patch: mounts a draggable whale balance widget on the
+# web surface. It injects a script through the webServer index tap and resolves
+# DEEPSEEK_API_KEY only on the node side to request the current balance.
+#
+# Enable it in a profile with:
+#   dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
+# or:
+#   dsh plugin --profile desktop add @deepseek-ai/dsh-whale-widget
+
+- insert:
+    - id: whale-widget
+      name: '@deepseek-ai/dsh-whale-widget'
