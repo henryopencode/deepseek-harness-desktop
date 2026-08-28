@@ -1,4 +1,5 @@
 name: Desktop Packages
+run-name: Desktop Packages (${{ inputs.target || 'all' }})
 
 on:
   workflow_dispatch:
