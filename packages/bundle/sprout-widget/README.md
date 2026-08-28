@@ -1,46 +1,38 @@
 # @deepseek-ai/dsh-sprout-widget
 
-A small, **draggable sprout status widget** for the DeepSeek Harness Web
-surface. It follows the harness agent session turn lifecycle and renders:
+English | [中文](README.zh.md)
 
-- **working** (an agent turn is open, `turn/start` → `turn/end`) → the sprout
-  **turns green and gently grows**;
-- **idle** → the sprout **greys and sways**;
-- mouse hover shows a `Harness 工作中 / 空闲` tooltip; a plain **click** polls
-  the status again;
-- **draggable** — grab it and move it anywhere; the position is remembered in
-  `localStorage`, and it stays clamped inside the window.
+An opt-in draggable sprout status widget for the DeepSeek Harness browser surface. It turns green while at least one agent turn is open and greys once every turn has ended.
 
-## How it works
+## Enable
 
-This is a node-side **bundle plugin**, following the same shape as
-`@deepseek-ai/dsh-web-app`:
+```sh
+dsh plugin --profile web add @deepseek-ai/dsh-sprout-widget
+dsh plugin --profile desktop add @deepseek-ai/dsh-sprout-widget
+```
 
-- `package.json` declares `dsh.bundle.patch` → `./cordis.patch.yml`, inserting a
-  single row (`sprout-widget`) into the profile.
-- `src/index.ts` (`inject: ['webServer']`, `apply(ctx)`) does three things:
-  1. subscribes to the session event feed (`session/event`, `turn/start` /
-     `turn/end`) and keeps a global open-turn counter — `> 0` means working;
-  2. `ctx.webServer.register` serves `/dsh-sprout/widget.js` (the client
-     sprite) and `/dsh-sprout/state` (the status JSON);
-  3. `ctx.webServer.tapIndex` injects
-     `<script defer src="/dsh-sprout/widget.js"></script>` into the served
-     `index.html`.
+The plugin adds no default profile row. The desktop package carries the plugin so it can be enabled from the desktop profile without downloading a second runtime.
 
-The client sprite is a self-contained vanilla-JS + inline-SVG component that
-polls `/dsh-sprout/state` once per second.
+## Behavior
 
-## Building / publishing
+The node plugin counts live `session/event` `turn/start` and `turn/end` events, serves the current boolean state at `/dsh-sprout/state`, and injects a same-origin browser script. The script polls once per second, displays the current state, and retains its drag position in browser `localStorage`.
 
-`lib/` is a build artifact (gitignored); `src/index.ts` is the committed source.
-Build the package with the repository root build (`pnpm run build`), which also
-type-checks it.
+## Model Experience
 
-## Icon / design note
+### Browser overlay
 
-The sprout is drawn with inline SVG and animated purely in CSS — no image
-assets, no network fetches beyond the status poll.
+#### What the model sees
 
-## License
+The `/dsh-sprout/*` browser routes contribute no prompt, tool schema, result, or session record.
 
-MIT
+#### Token effect
+
+The widget adds no request tokens.
+
+#### KV Cache effect
+
+The widget adds no cacheable request prefix.
+
+## Known Limitations and Deferred Work
+
+- **The state is process-local** — restarting the Harness resets the open-turn count and the widget resumes as idle until the next live turn starts.

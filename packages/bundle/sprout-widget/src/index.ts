@@ -21,19 +21,6 @@ export const name = 'sprout-widget'
 /** Services required before the sprout can mount. */
 export const inject = ['webServer']
 
-/**
- * Global open-turn counter across all sessions: a turn is "open" between the
- * session's `turn/start` and `turn/end` events, so openTurns > 0 means the
- * harness is currently doing work.
- */
-let openTurns = 0
-/** A short "linger" so the sprout keeps animating a beat after work ends. */
-let activeUntil = 0
-
-function isWorking(): boolean {
-  return openTurns > 0 || Date.now() < activeUntil
-}
-
 /** The client sprite: a self-contained vanilla-JS + inline-SVG draggable widget. */
 const WIDGET_JS = `(function () {
   'use strict';
@@ -217,15 +204,15 @@ const WIDGET_JS = `(function () {
   setInterval(poll, 1000);
 })();`
 
-/** Disposers returned by the webServer calls, released on plugin teardown. */
-const disposers: Array<() => void> = []
-
 /**
  * Mount the sprout widget: subscribe to the session turn lifecycle, serve the
  * client sprite and status endpoint, and tap the served index.html.
  * @param ctx - plugin context carrying the webServer service.
  */
 export function apply(ctx: Context): void {
+  let openTurns = 0
+  let activeUntil = 0
+
   ctx.on('session/event', (_session, event) => {
     if (event.type === 'turn/start') {
       openTurns += 1
@@ -236,40 +223,40 @@ export function apply(ctx: Context): void {
     }
   })
 
-  disposers.push(ctx.webServer.register({
-    kind: 'exact',
-    path: '/dsh-sprout/widget.js',
-    handler: (_req, res) => {
-      res.writeHead(200, {
-        'Content-Type': 'application/javascript; charset=utf-8',
-        'Cache-Control': 'no-store',
-      })
-      res.end(WIDGET_JS)
-    },
-  }))
-
-  disposers.push(ctx.webServer.register({
-    kind: 'exact',
-    path: '/dsh-sprout/state',
-    handler: (_req, res) => {
-      res.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      })
-      res.end(JSON.stringify({ working: isWorking() }))
-    },
-  }))
-
-  disposers.push(ctx.webServer.tapIndex((html) => {
-    if (html.includes('/dsh-sprout/widget.js')) return html
-    const tag = '<script defer src="/dsh-sprout/widget.js"></script>'
-    if (html.includes('</body>')) return html.replace('</body>', `${tag}</body>`)
-    return `${html}${tag}`
-  }))
-
-  ctx.effect(() => () => {
-    for (const dispose of disposers) {
-      try { dispose() } catch (err) { /* ignore teardown errors */ }
+  ctx.effect(() => {
+    const disposeWidget = ctx.webServer.register({
+      kind: 'exact',
+      path: '/dsh-sprout/widget.js',
+      handler: (_req, res) => {
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-store',
+        })
+        res.end(WIDGET_JS)
+      },
+    })
+    const disposeState = ctx.webServer.register({
+      kind: 'exact',
+      path: '/dsh-sprout/state',
+      handler: (_req, res) => {
+        const working = openTurns > 0 || Date.now() < activeUntil
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        })
+        res.end(JSON.stringify({ working }))
+      },
+    })
+    const disposeIndexTap = ctx.webServer.tapIndex((html) => {
+      if (html.includes('/dsh-sprout/widget.js')) return html
+      const tag = '<script defer src="/dsh-sprout/widget.js"></script>'
+      if (html.includes('</body>')) return html.replace('</body>', `${tag}</body>`)
+      return `${html}${tag}`
+    })
+    return () => {
+      disposeIndexTap()
+      disposeState()
+      disposeWidget()
     }
-  })
+  }, 'sprout-widget: web routes')
 }
