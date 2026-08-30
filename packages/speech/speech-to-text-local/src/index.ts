@@ -17,7 +17,6 @@ import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { nodewhisper } from 'nodejs-whisper'
 import { availableMemoryBytes, resolveSpeechToTextModel } from './model.ts'
 import type {
   SpeechToTextDescription, SpeechToTextModel, SpeechToTextModelPreference,
@@ -248,6 +247,7 @@ export class SpeechToTextLocalService extends TypertRemoteService {
       workingDirectory = await mkdtemp(join(tmpdir(), 'dsh-speech-to-text-'))
       const inputPath = join(workingDirectory, 'recording.wav')
       await writeFile(inputPath, decoded)
+      const { nodewhisper } = await import('nodejs-whisper')
       const output = await nodewhisper(inputPath, {
         modelName: this.model,
         modelRootPath: this.modelRootPath,

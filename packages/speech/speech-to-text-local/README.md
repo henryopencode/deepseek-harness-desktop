@@ -16,7 +16,7 @@ A Host-local Whisper transcription Remote for browser recordings. `speechToTextL
 | `maxAudioDurationMs` | Maximum duration accepted from the WAV header. |
 | `useGpu` | Allow whisper.cpp to use its available GPU backend; the shipped Web configuration enables it only on macOS. |
 
-The shipped Web composition admits 4 MiB and 60 seconds, downloads models under the Harness home, and enables GPU acceleration only on macOS. Windows and Linux use the bundled CPU backend. The browser always supplies the PCM WAV required by whisper.cpp. A source deployment needs network access when `autoDownload` is true; `nodejs-whisper` compiles its bundled whisper.cpp checkout only when no `whisper-cli` exists. Desktop packages provide the platform-native executable, so their first transcription downloads only the selected model.
+The shipped Web composition explicitly selects `base`, admits 4 MiB and 60 seconds, downloads models under the Harness home, and enables GPU acceleration only on macOS. Windows and Linux use the bundled CPU backend. The browser always supplies the PCM WAV required by whisper.cpp. The service resolves `nodejs-whisper` only after it has accepted and written a recording, so desktop startup does not start Whisper. A source deployment needs network access when `autoDownload` is true; `nodejs-whisper` compiles its bundled whisper.cpp checkout only when no `whisper-cli` exists. Desktop packages provide the platform-native executable, so their first transcription downloads only the selected model.
 
 ## Failure and lifetime behavior
 

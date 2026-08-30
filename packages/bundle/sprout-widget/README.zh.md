@@ -11,7 +11,7 @@ dsh plugin --profile web add @deepseek-ai/dsh-sprout-widget
 dsh plugin --profile desktop add @deepseek-ai/dsh-sprout-widget
 ```
 
-该插件不会加入默认 profile。桌面安装包会携带该插件，因此可以直接在 desktop profile 中启用，不需要再下载第二套 runtime。
+Web 和 desktop profile 默认都不会加入此插件。
 
 ## 行为
 

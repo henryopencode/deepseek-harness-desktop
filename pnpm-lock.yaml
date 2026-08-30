@@ -397,15 +397,9 @@ importers:
       '@deepseek-ai/dsh-session-title-llm':
         specifier: workspace:^
         version: link:../../packages/session/session-title-llm
-      '@deepseek-ai/dsh-sprout-widget':
-        specifier: workspace:^
-        version: link:../../packages/bundle/sprout-widget
       '@deepseek-ai/dsh-web-app':
         specifier: workspace:^
         version: link:../../packages/bundle/web-app
-      '@deepseek-ai/dsh-whale-widget':
-        specifier: workspace:^
-        version: link:../../packages/bundle/whale-widget
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery

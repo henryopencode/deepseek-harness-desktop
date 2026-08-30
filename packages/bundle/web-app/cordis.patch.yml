@@ -66,13 +66,13 @@
       config:
         maxNoteBytes: 8192
 
-    # Local browser dictation: memory-aware Whisper selection (base through
-    # 4 GiB, small above it), one bounded recording at a time, first-use model
-    # download into the Harness home.
+    # Local browser dictation uses the lighter base model by default. Whisper
+    # loads only after a recording stops; first use downloads the model into the
+    # Harness home.
     - id: speech-to-text-local
       name: '@deepseek-ai/dsh-speech-to-text-local'
       config:
-        model: auto
+        model: base
         modelRootPath: !!js dshHomePath('models/whisper')
         autoDownload: true
         language: auto

@@ -59,9 +59,9 @@ type SpeechTranscriptionResult =
 
 ## Admission and execution
 
-`model: auto` resolves once at service construction from Node's constrained memory when available, otherwise physical memory. A capacity through 4 GiB chooses multilingual `base`; a larger capacity chooses multilingual `small`. Explicit configuration bypasses this choice. Model files remain under the configured root, while each request receives a fresh temporary directory removed after settlement.
+`model: auto` resolves once at service construction from Node's constrained memory when available, otherwise physical memory. A capacity through 4 GiB chooses multilingual `base`; a larger capacity chooses multilingual `small`. Explicit configuration bypasses this choice. The shipped Web composition explicitly selects `base` to avoid choosing the slower `small` model on higher-memory Macs. Model files remain under the configured root, while each request receives a fresh temporary directory removed after settlement.
 
-The Host admits only canonical base64 16 kHz mono PCM WAV audio. It rejects decoded byte overflow and malformed WAV headers before writing the recording, then enforces duration from the WAV data length and byte rate. One private admission flag rejects concurrent work. Accepted audio runs through a finite `nodejs-whisper` process, so model memory is released when the process exits.
+The Host admits only canonical base64 16 kHz mono PCM WAV audio. It rejects decoded byte overflow and malformed WAV headers before writing the recording, then enforces duration from the WAV data length and byte rate. One private admission flag rejects concurrent work. It resolves `nodejs-whisper` only after writing an accepted recording, then runs it as a finite process, so application startup does not launch Whisper and model memory is released when the process exits.
 
 ## Browser consumer
 

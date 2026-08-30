@@ -1,9 +1,11 @@
 import { access, cp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { execFile as execFileCallback, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertNoAbsoluteLinks, relativizeAbsoluteLinks } from './package-links.mjs'
+import { createDesktopRuntimeManifest } from '../runtime.mjs'
+import { promisify } from 'node:util'
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const desktopDirectory = resolve(scriptDirectory, '..')
@@ -12,6 +14,7 @@ const args = new Map(process.argv.slice(2).flatMap((value, index, all) =>
   value.startsWith('--') ? [[value.slice(2), all[index + 1]]] : []))
 const platform = args.get('platform') ?? process.platform
 const arch = args.get('arch') ?? process.arch
+const runtimeOnly = args.has('runtime-only')
 const stageRoot = process.env.DSH_DESKTOP_STAGE_ROOT || join(tmpdir(), 'dsh-desktop-stage')
 const stageDirectory = join(stageRoot, `${platform}-${arch}`)
 const releaseDirectory = join(repositoryDirectory, 'release')
@@ -27,6 +30,7 @@ const icon = join(desktopDirectory, 'build', {
   win32: 'icon.ico',
 }[platform] ?? 'icon.png')
 const executableSuffix = platform === 'win32' ? '.exe' : ''
+const execFile = promisify(execFileCallback)
 
 /** Run one build command and reject with its exit status. */
 function run(command, commandArgs, options = {}) {
@@ -81,7 +85,7 @@ async function buildBundledWhisper(harnessDirectory) {
   await run('cmake', [
     '-B', 'build',
     ...platform === 'darwin' ? [
-      `-DCMAKE_OSX_ARCHITECTURES=${arch}`,
+      `-DCMAKE_OSX_ARCHITECTURES=${arch === 'x64' ? 'x86_64' : arch}`,
       '-DGGML_NATIVE=OFF',
     ] : [],
   ], { cwd: source })
@@ -109,7 +113,11 @@ async function relocateMacosWhisper(executable) {
   const binaryDirectory = dirname(executable)
   for (const entry of await readdir(binaryDirectory, { withFileTypes: true })) {
     if (!entry.isFile() || (entry.name !== 'whisper-cli' && !entry.name.endsWith('.dylib'))) continue
-    await run('install_name_tool', ['-add_rpath', '@loader_path', join(binaryDirectory, entry.name)])
+    const file = join(binaryDirectory, entry.name)
+    const { stdout } = await execFile('otool', ['-l', file])
+    if (!stdout.includes('path @loader_path')) {
+      await run('install_name_tool', ['-add_rpath', '@loader_path', file])
+    }
   }
 }
 
@@ -167,7 +175,7 @@ SectionEnd
 
 /** Create the macOS drag-to-install disk image with an Applications shortcut. */
 async function packageMacInstaller(packageDirectory) {
-  const installer = join(releaseDirectory, 'DeepSeek-Harness-macos-arm64.dmg')
+  const installer = join(releaseDirectory, `DeepSeek-Harness-macos-${arch}.dmg`)
   const contents = join(stageDirectory, 'dmg')
   await rm(installer, { force: true })
   await rm(contents, { recursive: true, force: true })
@@ -180,7 +188,7 @@ async function packageMacInstaller(packageDirectory) {
   await run('hdiutil', ['create', '-volname', packageName, '-srcfolder', contents, '-ov', '-format', 'UDZO', installer])
 }
 
-/** Package a runnable Electron shell, then add the built Harness and Node runtime. */
+/** Package a runnable Electron shell and a separately replaceable Harness runtime. */
 async function main() {
   if (!['darwin', 'linux', 'win32'].includes(platform)) {
     throw new Error(`desktop package only supports darwin, linux, or win32, got ${platform}`)
@@ -196,67 +204,110 @@ async function main() {
   const nodeDirectory = join(stageDirectory, 'node')
   await mkdir(nodeDirectory, { recursive: true })
   await copyNodeRuntime(nodeDirectory)
-  const packagedDirectory = join(stageDirectory, 'electron')
-  const electronPackage = JSON.parse(await readFile(
-    join(repositoryDirectory, 'node_modules', 'electron', 'package.json'),
-    'utf8',
-  ))
-  await run(process.execPath, [
-    join(repositoryDirectory, 'node_modules', '@electron', 'packager', 'bin', 'electron-packager.mjs'),
-    desktopDirectory,
-    packageName,
-    `--platform=${platform}`,
-    `--arch=${arch}`,
-    `--out=${packagedDirectory}`,
-    '--overwrite',
-    '--asar',
-    `--icon=${icon}`,
-    '--ignore=node_modules',
-    '--prune=false',
-    `--electron-version=${electronPackage.version}`,
-    ...process.env.ELECTRON_CACHE === undefined ? [] : [`--download.cacheRoot=${process.env.ELECTRON_CACHE}`],
-    ...(platform === 'darwin' ? [`--extend-info=${join(desktopDirectory, 'build', 'Info.plist')}`] : []),
-  ], { cwd: repositoryDirectory })
-  const folderName = `${packageName}-${platform}-${arch}`
-  const packageDirectory = join(packagedDirectory, folderName)
-  const resourcesDirectory = platform === 'darwin'
-    ? join(packageDirectory, `${packageName}.app`, 'Contents', 'Resources')
-    : join(packageDirectory, 'resources')
-  const applicationDirectory = platform === 'darwin'
-    ? join(packageDirectory, `${packageName}.app`)
-    : undefined
-  if (applicationDirectory !== undefined) {
-    await relativizeAbsoluteLinks(applicationDirectory)
-    await assertNoAbsoluteLinks(applicationDirectory)
+  let packagedDirectory
+  let folderName
+  let packageDirectory
+  let resourcesDirectory
+  if (!runtimeOnly) {
+    packagedDirectory = join(stageDirectory, 'electron')
+    const electronPackage = JSON.parse(await readFile(
+      join(repositoryDirectory, 'node_modules', 'electron', 'package.json'),
+      'utf8',
+    ))
+    await run(process.execPath, [
+      join(repositoryDirectory, 'node_modules', '@electron', 'packager', 'bin', 'electron-packager.mjs'),
+      desktopDirectory,
+      packageName,
+      `--platform=${platform}`,
+      `--arch=${arch}`,
+      `--out=${packagedDirectory}`,
+      '--overwrite',
+      '--asar',
+      `--icon=${icon}`,
+      '--ignore=node_modules',
+      '--prune=false',
+      `--electron-version=${electronPackage.version}`,
+      ...process.env.ELECTRON_CACHE === undefined ? [] : [`--download.cacheRoot=${process.env.ELECTRON_CACHE}`],
+      ...(platform === 'darwin' ? [`--extend-info=${join(desktopDirectory, 'build', 'Info.plist')}`] : []),
+    ], { cwd: repositoryDirectory })
+    folderName = `${packageName}-${platform}-${arch}`
+    packageDirectory = join(packagedDirectory, folderName)
+    resourcesDirectory = platform === 'darwin'
+      ? join(packageDirectory, `${packageName}.app`, 'Contents', 'Resources')
+      : join(packageDirectory, 'resources')
+    const applicationDirectory = platform === 'darwin'
+      ? join(packageDirectory, `${packageName}.app`)
+      : undefined
+    if (applicationDirectory !== undefined) {
+      await relativizeAbsoluteLinks(applicationDirectory)
+      await assertNoAbsoluteLinks(applicationDirectory)
+    }
   }
-  await cp(harnessDirectory, join(resourcesDirectory, 'harness'), { recursive: true, dereference: true })
-  await cp(nodeDirectory, join(resourcesDirectory, 'node'), { recursive: true, dereference: true })
-  const packagedHarnessDirectory = join(resourcesDirectory, 'harness')
+  const runtimeDirectory = join(stageDirectory, 'runtime')
+  await cp(harnessDirectory, join(runtimeDirectory, 'harness'), { recursive: true, dereference: true })
+  await cp(nodeDirectory, join(runtimeDirectory, 'node'), { recursive: true, dereference: true })
+  const packagedHarnessDirectory = join(runtimeDirectory, 'harness')
   await materializeVendoredRuntimePackages(packagedHarnessDirectory)
   await assertNoAbsoluteLinks(packagedHarnessDirectory)
   const whisperExecutable = await buildBundledWhisper(packagedHarnessDirectory)
   if (platform === 'darwin') await relocateMacosWhisper(whisperExecutable)
-  if (platform === 'darwin') {
-    await run('codesign', ['--force', '--deep', '--sign', '-', join(packageDirectory, `${packageName}.app`)])
+  await writeFile(
+    join(runtimeDirectory, 'manifest.json'),
+    `${JSON.stringify(createDesktopRuntimeManifest({
+      version: desktopPackage.version,
+      platform,
+      arch,
+      nodePath: platform === 'win32' ? 'node/node.exe' : 'node/node',
+    }), undefined, 2)}\n`,
+  )
+  await cp(join(desktopDirectory, 'runtime.mjs'), join(runtimeDirectory, 'runtime.mjs'))
+  await cp(join(desktopDirectory, 'activate-runtime.mjs'), join(runtimeDirectory, 'activate-runtime.mjs'))
+  if (!runtimeOnly) {
+    await cp(runtimeDirectory, join(resourcesDirectory, 'runtime'), { recursive: true, dereference: true })
+    if (platform === 'darwin') {
+      await run('codesign', ['--force', '--deep', '--sign', '-', join(packageDirectory, `${packageName}.app`)])
+    }
   }
   await mkdir(releaseDirectory, { recursive: true })
   const archiveName = {
-    darwin: 'DeepSeek-Harness-macos-arm64.zip',
+    darwin: `DeepSeek-Harness-macos-${arch}.zip`,
     linux: 'DeepSeek-Harness-linux-x64.tar.gz',
     win32: 'DeepSeek-Harness-windows-x64.zip',
   }[platform]
   const archive = join(releaseDirectory, archiveName)
+  const runtimeArchive = join(releaseDirectory, {
+    darwin: `DeepSeek-Harness-runtime-macos-${arch}.zip`,
+    linux: 'DeepSeek-Harness-runtime-linux-x64.tar.gz',
+    win32: 'DeepSeek-Harness-runtime-windows-x64.zip',
+  }[platform])
   await rm(archive, { force: true })
-  if (platform === 'darwin') {
-    await run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', join(packageDirectory, `${packageName}.app`), archive])
-  } else if (platform === 'linux') {
-    await run('tar', ['-c', '-z', '-f', archive, folderName], { cwd: packagedDirectory })
-  } else {
-    await run('tar', ['-a', '-c', '-f', archive, folderName], { cwd: packagedDirectory })
+  await rm(runtimeArchive, { force: true })
+  if (!runtimeOnly) {
+    if (platform === 'darwin') {
+      await run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', join(packageDirectory, `${packageName}.app`), archive])
+    } else if (platform === 'linux') {
+      await run('tar', ['-c', '-z', '-f', archive, folderName], { cwd: packagedDirectory })
+    } else {
+      await run('tar', ['-a', '-c', '-f', archive, folderName], { cwd: packagedDirectory })
+    }
   }
-  if (platform === 'win32') await packageWindowsInstaller(packageDirectory)
-  if (platform === 'darwin') await packageMacInstaller(packageDirectory)
-  process.stdout.write(`desktop package: ${archive}\n`)
+  const runtimeFolderName = `DeepSeek-Harness-runtime-${platform}-${arch}`
+  const runtimeArchiveRoot = join(stageDirectory, runtimeFolderName)
+  await rm(runtimeArchiveRoot, { recursive: true, force: true })
+  await cp(runtimeDirectory, runtimeArchiveRoot, { recursive: true, dereference: true })
+  if (platform === 'darwin') {
+    await run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', runtimeArchiveRoot, runtimeArchive])
+  } else if (platform === 'linux') {
+    await run('tar', ['-c', '-z', '-f', runtimeArchive, runtimeFolderName], { cwd: stageDirectory })
+  } else {
+    await run('tar', ['-a', '-c', '-f', runtimeArchive, runtimeFolderName], { cwd: stageDirectory })
+  }
+  if (!runtimeOnly) {
+    if (platform === 'win32') await packageWindowsInstaller(packageDirectory)
+    if (platform === 'darwin') await packageMacInstaller(packageDirectory)
+    process.stdout.write(`desktop package: ${archive}\n`)
+  }
+  process.stdout.write(`desktop runtime: ${runtimeArchive}\n`)
 }
 
 await main()

@@ -16,7 +16,7 @@
 | `maxAudioDurationMs` | 从 WAV 头读取后允许的最大时长。 |
 | `useGpu` | 允许 whisper.cpp 使用可用的 GPU 后端；随附 Web 配置仅在 macOS 启用。 |
 
-随附的 Web 组合允许 4 MiB 与 60 秒，把模型下载到 Harness home，并且只在 macOS 启用 GPU 加速。Windows 和 Linux 使用随附的 CPU 后端。浏览器始终提供 whisper.cpp 所需的 PCM WAV。源码部署在 `autoDownload` 为 true 时需要网络；仅在没有 `whisper-cli` 时，`nodejs-whisper` 才会编译其随附的 whisper.cpp checkout。桌面包会提供平台原生的可执行文件，因此首次转写只下载所选模型。
+随附的 Web 组合明确选择 `base`，允许 4 MiB 与 60 秒，把模型下载到 Harness home，并且只在 macOS 启用 GPU 加速。Windows 和 Linux 使用随附的 CPU 后端。浏览器始终提供 whisper.cpp 所需的 PCM WAV。服务只有在接纳并写入录音后才解析 `nodejs-whisper`，所以桌面启动不会启动 Whisper。源码部署在 `autoDownload` 为 true 时需要网络；仅在没有 `whisper-cli` 时，`nodejs-whisper` 才会编译其随附的 whisper.cpp checkout。桌面包会提供平台原生的可执行文件，因此首次转写只下载所选模型。
 
 ## 失败与生命周期行为
 

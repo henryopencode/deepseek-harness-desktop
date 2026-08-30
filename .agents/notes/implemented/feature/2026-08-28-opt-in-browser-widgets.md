@@ -10,13 +10,13 @@ The desktop product needs lightweight status and balance indicators without chan
 
 ## Decision
 
-`@deepseek-ai/dsh-sprout-widget` and `@deepseek-ai/dsh-whale-widget` are optional bundle plugins. They are dependencies of `@deepseek-ai/dsh-desktop`, so the packaged runtime can resolve them after a user adds either package to a `web` or `desktop` profile. Neither package appears in a shipped profile's default bundle list.
+`@deepseek-ai/dsh-sprout-widget` and `@deepseek-ai/dsh-whale-widget` are optional bundle plugins. They are not part of the desktop package or its default profile; `web` and other profiles require explicit activation.
 
 The sprout widget derives its process-local state from `session/event` turn boundaries and exposes only a same-origin boolean route. The whale widget resolves `DEEPSEEK_API_KEY` on the node side, requests the official balance endpoint, and returns only balance and currency to its same-origin browser script. The whale does not persist a balance, usage ledger, provider token, or pricing table.
 
 ## Alternatives considered
 
-**Enable both widgets by default.** Rejected because existing profiles must retain their current page composition and users may not want status adornments or balance requests.
+**Enable both widgets in every profile.** Rejected because non-desktop profiles must retain their existing page composition and users may not want status adornments or balance requests.
 
 **Resolve DeepSeek credentials in the browser.** Rejected because a browser script must never receive the API key; the node route keeps the credential in the provider-side service.
 

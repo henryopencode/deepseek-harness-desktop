@@ -54,7 +54,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package -- --platform linux --arch x6
 pnpm --filter @deepseek-ai/dsh-desktop run package -- --platform win32 --arch x64
 ```
 
-产物写入 `release/`。Windows 打包需要 NSIS（`makensis.exe`）。如果无法在本机重新编译原生组件，Windows 打包脚本可以复用已经验证过的 x64 Node runtime 和预构建 Whisper 目录：
+产物写入 `release/`。每个平台都会同时生成可安装的外壳产物和对应的 `DeepSeek-Harness-runtime-<platform>-<arch>` 归档，供后续更新 runtime。Windows 打包需要 NSIS（`makensis.exe`）。如果无法在本机重新编译原生组件，Windows 打包脚本可以复用已经验证过的 x64 Node runtime 和预构建 Whisper 目录：
 
 ```powershell
 $env:DSH_DESKTOP_NODE_RUNTIME = 'C:\path\to\node-runtime'
@@ -71,9 +71,11 @@ Node runtime 目录必须包含 `node.exe`，Whisper 目录必须包含 `whisper
 ```sh
 node --check apps/desktop/main.mjs
 node --check apps/desktop/scripts/package.mjs
-node --test apps/desktop/scripts/package-links.test.mjs
+node --check apps/desktop/runtime.mjs
+node --check apps/desktop/activate-runtime.mjs
+node --test apps/desktop/runtime.test.mjs apps/desktop/profile.test.mjs apps/desktop/scripts/package-links.test.mjs
 pnpm run build
 pnpm run doc-sync
 ```
 
-`Desktop Packages` workflow 可以在 GitHub Actions 上构建原生产物。本地打包时，只上传当前提交生成的产物，并核对 SHA256。当前可安装产物为 Windows 的 `DeepSeek-Harness-Setup-x64.exe` 和 Apple Silicon macOS 的 `DeepSeek-Harness-macos-arm64.dmg`。Windows 安装器目前没有 Authenticode 签名，在配置签名证书前，Windows SmartScreen 可能显示信任警告。
+`Desktop Packages` workflow 可以在 GitHub Actions 上构建原生产物。本地打包时，只上传当前提交生成的产物，并核对 SHA256。当前可安装产物为 Windows 的 `DeepSeek-Harness-Setup-x64.exe` 和 Apple Silicon macOS 的 `DeepSeek-Harness-macos-arm64.dmg`；对应的 runtime 归档是可选的更新载荷。Windows 安装器目前没有 Authenticode 签名，在配置签名证书前，Windows SmartScreen 可能显示信任警告。

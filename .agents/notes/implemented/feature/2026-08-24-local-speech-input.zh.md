@@ -12,7 +12,7 @@ Web 输入框接受键入文字与图片／文件输入，但没有麦克风路�
 
 `@deepseek-ai/dsh-speech-to-text-local` 持有 direct `speechToTextLocal` Host Remote。它接受一段规范 base64 编码的 16 kHz 单声道 PCM WAV 浏览器录音，校验解码字节数与 WAV 头时长，直接从 whisper.cpp 模型发布源下载缺失的已配置 ggml 模型，把执行串行限制为一个请求，通过 `nodejs-whisper` 转写，并在结算后删除生成的临时目录。配置负责模型目录、下载策略、语言、字节与时长限制以及 GPU 使用。
 
-提供方在服务构造时只解析一次 `model: auto`。它优先读取 Node 的 constrained memory 值，否则回退到物理内存：4 GiB 及以下选择多语言 `base`，更大值选择多语言 `small`。明确配置 `base` 或 `small` 会绕过该选择。随附 Web 组合只在 macOS 启用 GPU 路径，因为该桌面包携带 Metal 后端；Windows 和 Linux 使用 CPU。每个请求运行一个有限生命周期的 whisper.cpp 进程，不会在转写后继续占用模型内存。
+提供方在服务构造时只解析一次 `model: auto`。它优先读取 Node 的 constrained memory 值，否则回退到物理内存：4 GiB 及以下选择多语言 `base`，更大值选择多语言 `small`。明确配置 `base` 或 `small` 会绕过该选择。随附 Web 组合明确选择 `base`，并且只在 macOS 启用 GPU 路径，因为该桌面包携带 Metal 后端；Windows 和 Linux 使用 CPU。服务只会在写入已准入录音后解析 `nodejs-whisper`，每个请求运行一个有限生命周期的 whisper.cpp 进程，不会在转写后继续占用模型内存。
 
 `@deepseek-ai/dsh-client-ui-speech-input` 通过 API Remote 组合消费生成的 Remote，并占用 `conversation.input.right`。空闲麦克风会立即请求媒体流，同时在截止时间内读取 Host 限制；活跃状态用取消、滚动振幅历史与停止覆盖现有工具行，同时保留 textarea 与主发送圆钮。浏览器经 Web Audio 采集单声道 PCM，生成 16 kHz WAV，不再依赖 WebKit 的 `MediaRecorder` 分段文件；到达时长限制时停止，在取消或卸载时关闭媒体资源，并把成功文字追加到最新草稿而不提交。
 

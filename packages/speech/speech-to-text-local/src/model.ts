@@ -12,7 +12,9 @@ const LOW_MEMORY_BYTES = 4 * 1024 ** 3
  */
 export function availableMemoryBytes(): number {
   const constrained = process.constrainedMemory()
-  return constrained > 0 ? constrained : totalmem()
+  // Linux can report an unsigned unlimited cgroup sentinel, which exceeds
+  // JavaScript's safe-integer range and is not an actual memory limit.
+  return Number.isSafeInteger(constrained) && constrained > 0 ? constrained : totalmem()
 }
 
 /**

@@ -15,11 +15,11 @@ permissions:
   contents: write
 
 env:
-  DESKTOP_RELEASE_TAG: v0.2.8
+  DESKTOP_RELEASE_TAG: v0.2.11
 
 jobs:
   prepare-release:
-    name: Prepare v0.2.8 release
+    name: Prepare v0.2.11 release
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.package-matrix.outputs.value }}
@@ -29,17 +29,17 @@ jobs:
         run: |
           gh release view "$DESKTOP_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "$DESKTOP_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "DeepSeek Harness Desktop v0.2.8" \
-              --notes "Electron desktop release with local speech-to-text, single-instance window reuse, and native edit context menus for macOS Apple Silicon, Linux x64, and Windows x64."
+              --title "DeepSeek Harness Desktop v0.2.11" \
+              --notes "Desktop release with a separately replaceable versioned runtime archive."
       - id: package-matrix
         env:
           TARGET: ${{ github.event.inputs.target || 'all' }}
         run: |
           case "$TARGET" in
-            all) value='{"include":[{"name":"macOS arm64","os":"macos-14","platform":"darwin","arch":"arm64","artifact":"DeepSeek-Harness-macos-arm64.zip"},{"name":"Linux x64","os":"ubuntu-latest","platform":"linux","arch":"x64","artifact":"DeepSeek-Harness-linux-x64.tar.gz"},{"name":"Windows x64","os":"windows-latest","platform":"win32","arch":"x64","artifact":"DeepSeek-Harness-windows-x64.zip"}]}' ;;
-            linux) value='{"include":[{"name":"Linux x64","os":"ubuntu-latest","platform":"linux","arch":"x64","artifact":"DeepSeek-Harness-linux-x64.tar.gz"}]}' ;;
-            macos) value='{"include":[{"name":"macOS arm64","os":"macos-14","platform":"darwin","arch":"arm64","artifact":"DeepSeek-Harness-macos-arm64.zip"}]}' ;;
-            windows) value='{"include":[{"name":"Windows x64","os":"windows-latest","platform":"win32","arch":"x64","artifact":"DeepSeek-Harness-windows-x64.zip"}]}' ;;
+            all) value='{"include":[{"name":"macOS arm64","os":"macos-14","platform":"darwin","arch":"arm64","artifact":"DeepSeek-Harness-macos-arm64.zip","runtime":"DeepSeek-Harness-runtime-macos-arm64.zip"},{"name":"Linux x64","os":"ubuntu-latest","platform":"linux","arch":"x64","artifact":"DeepSeek-Harness-linux-x64.tar.gz","runtime":"DeepSeek-Harness-runtime-linux-x64.tar.gz"},{"name":"Windows x64","os":"windows-latest","platform":"win32","arch":"x64","artifact":"DeepSeek-Harness-windows-x64.zip","runtime":"DeepSeek-Harness-runtime-windows-x64.zip"}]}' ;;
+            linux) value='{"include":[{"name":"Linux x64","os":"ubuntu-latest","platform":"linux","arch":"x64","artifact":"DeepSeek-Harness-linux-x64.tar.gz","runtime":"DeepSeek-Harness-runtime-linux-x64.tar.gz"}]}' ;;
+            macos) value='{"include":[{"name":"macOS arm64","os":"macos-14","platform":"darwin","arch":"arm64","artifact":"DeepSeek-Harness-macos-arm64.zip","runtime":"DeepSeek-Harness-runtime-macos-arm64.zip"}]}' ;;
+            windows) value='{"include":[{"name":"Windows x64","os":"windows-latest","platform":"win32","arch":"x64","artifact":"DeepSeek-Harness-windows-x64.zip","runtime":"DeepSeek-Harness-runtime-windows-x64.zip"}]}' ;;
             *) echo "unsupported desktop package target: $TARGET" >&2; exit 1 ;;
           esac
           echo "value=$value" >> "$GITHUB_OUTPUT"
@@ -66,6 +66,7 @@ jobs:
         shell: pwsh
         run: choco install nsis --yes --no-progress
       - run: pnpm install --frozen-lockfile
+      - run: node --test apps/desktop/profile.test.mjs apps/desktop/runtime.test.mjs
       - if: matrix.platform == 'darwin'
         run: node --test apps/desktop/scripts/package-links.test.mjs
       - if: matrix.platform == 'win32'
@@ -88,7 +89,7 @@ jobs:
           if ($longestPath.Maximum -gt 220) { throw "Windows archive path is $($longestPath.Maximum) characters; keep it at or below 220." }
           $portableRoot = Join-Path $env:RUNNER_TEMP 'dsh-portable-check'
           Expand-Archive -LiteralPath 'release/DeepSeek-Harness-windows-x64.zip' -DestinationPath $portableRoot -Force
-          $whisperRoot = Join-Path $portableRoot 'DeepSeek Harness-win32-x64/resources/harness/node_modules/nodejs-whisper/cpp/whisper.cpp/build'
+          $whisperRoot = Join-Path $portableRoot 'DeepSeek Harness-win32-x64/resources/runtime/harness/node_modules/nodejs-whisper/cpp/whisper.cpp/build'
           $whisper = Get-ChildItem $whisperRoot -Filter whisper-cli.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
           if ($null -eq $whisper) { throw 'bundled whisper-cli is missing' }
           & $whisper --help | Out-Null
@@ -129,7 +130,7 @@ jobs:
           done < <(find "$application" -type l -print0)
           codesign --verify --deep --strict --verbose=2 "$application"
           check_electron_start "$application" "$RUNNER_TEMP/dsh-electron-zip.log"
-          whisper="$check_root/DeepSeek Harness.app/Contents/Resources/harness/node_modules/nodejs-whisper/cpp/whisper.cpp/build/bin/whisper-cli"
+          whisper="$check_root/DeepSeek Harness.app/Contents/Resources/runtime/harness/node_modules/nodejs-whisper/cpp/whisper.cpp/build/bin/whisper-cli"
           test -x "$whisper"
           otool -l "$whisper" | grep -A2 'LC_RPATH' | grep -F '@loader_path'
           "$whisper" --help >/dev/null
@@ -181,3 +182,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: gh release upload $env:DESKTOP_RELEASE_TAG release/${{ matrix.artifact }} --repo $env:GITHUB_REPOSITORY --clobber
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: gh release upload $env:DESKTOP_RELEASE_TAG release/${{ matrix.runtime }} --repo $env:GITHUB_REPOSITORY --clobber

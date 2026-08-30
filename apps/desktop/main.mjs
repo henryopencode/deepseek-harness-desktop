@@ -4,10 +4,11 @@ import { mkdir, open, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
+import { desktopProfileName, prepareDesktopProfile } from './profile.mjs'
+import { resolveDesktopRuntime } from './runtime.mjs'
 
 const { app, BrowserWindow, Menu, session, shell, systemPreferences } = electron
 const productName = 'DeepSeek Harness'
-const desktopProfileName = 'desktop'
 
 app.setName(productName)
 if (process.platform === 'win32') app.setAppUserModelId('ai.deepseek.harness.desktop')
@@ -15,44 +16,43 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock()
 
 const appDirectory = dirname(fileURLToPath(import.meta.url))
 const repositoryDirectory = resolve(appDirectory, '../..')
-const packagedHarnessDirectory = join(process.resourcesPath, 'harness')
-const harnessDirectory = app.isPackaged ? packagedHarnessDirectory : repositoryDirectory
-const nodeExecutable = app.isPackaged
-  ? join(process.resourcesPath, 'node', process.platform === 'win32' ? 'node.exe' : 'node')
-  : process.env.DSH_DESKTOP_NODE ?? process.env.npm_node_execpath ?? process.execPath
+const bundledRuntimeDirectory = join(process.resourcesPath, 'runtime')
+const developmentNodeExecutable = process.env.DSH_DESKTOP_NODE ?? process.env.npm_node_execpath ?? process.execPath
 const inheritedEnvironment = process.env
-const childPath = process.platform === 'win32'
-  ? [dirname(nodeExecutable), `${inheritedEnvironment.SystemRoot ?? 'C:\\Windows'}\\System32`, inheritedEnvironment.SystemRoot ?? 'C:\\Windows'].join(';')
-  : [dirname(nodeExecutable), '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':')
 const homeDirectory = inheritedEnvironment.HOME ?? inheritedEnvironment.USERPROFILE
 const temporaryDirectory = inheritedEnvironment.TMPDIR ?? inheritedEnvironment.TEMP ?? inheritedEnvironment.TMP
 const proxyEnvironment = Object.fromEntries(['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'].flatMap(name => {
   const value = inheritedEnvironment[name] ?? inheritedEnvironment[name.toLowerCase()]
   return value === undefined || value === '' ? [] : [[name, value]]
 }))
-const childEnvironment = Object.fromEntries([
-  ['HOME', homeDirectory],
-  ['USER', inheritedEnvironment.USER ?? inheritedEnvironment.USERNAME],
-  ['LOGNAME', inheritedEnvironment.LOGNAME ?? inheritedEnvironment.USERNAME],
-  ['LANG', inheritedEnvironment.LANG ?? 'en_US.UTF-8'],
-  ['TMPDIR', temporaryDirectory],
-  ['PATH', childPath],
-  ['NODE_USE_ENV_PROXY', Object.keys(proxyEnvironment).length > 0 ? '1' : inheritedEnvironment.NODE_USE_ENV_PROXY],
-  ...process.platform === 'win32' ? [
-    ['APPDATA', inheritedEnvironment.APPDATA],
-    ['ComSpec', inheritedEnvironment.ComSpec],
-    ['HOMEDRIVE', inheritedEnvironment.HOMEDRIVE],
-    ['HOMEPATH', inheritedEnvironment.HOMEPATH],
-    ['LOCALAPPDATA', inheritedEnvironment.LOCALAPPDATA],
-    ['PATHEXT', inheritedEnvironment.PATHEXT],
-    ['SystemRoot', inheritedEnvironment.SystemRoot],
-    ['TEMP', inheritedEnvironment.TEMP],
-    ['TMP', inheritedEnvironment.TMP],
-    ['USERPROFILE', inheritedEnvironment.USERPROFILE],
-    ['WINDIR', inheritedEnvironment.WINDIR],
-  ] : [],
-  ...Object.entries(proxyEnvironment),
-].filter(([, value]) => value !== undefined && value !== ''))
+function childEnvironment(nodeExecutable) {
+  const childPath = process.platform === 'win32'
+    ? [dirname(nodeExecutable), `${inheritedEnvironment.SystemRoot ?? 'C:\\Windows'}\\System32`, inheritedEnvironment.SystemRoot ?? 'C:\\Windows'].join(';')
+    : [dirname(nodeExecutable), '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':')
+  return Object.fromEntries([
+    ['HOME', homeDirectory],
+    ['USER', inheritedEnvironment.USER ?? inheritedEnvironment.USERNAME],
+    ['LOGNAME', inheritedEnvironment.LOGNAME ?? inheritedEnvironment.USERNAME],
+    ['LANG', inheritedEnvironment.LANG ?? 'en_US.UTF-8'],
+    ['TMPDIR', temporaryDirectory],
+    ['PATH', childPath],
+    ['NODE_USE_ENV_PROXY', Object.keys(proxyEnvironment).length > 0 ? '1' : inheritedEnvironment.NODE_USE_ENV_PROXY],
+    ...process.platform === 'win32' ? [
+      ['APPDATA', inheritedEnvironment.APPDATA],
+      ['ComSpec', inheritedEnvironment.ComSpec],
+      ['HOMEDRIVE', inheritedEnvironment.HOMEDRIVE],
+      ['HOMEPATH', inheritedEnvironment.HOMEPATH],
+      ['LOCALAPPDATA', inheritedEnvironment.LOCALAPPDATA],
+      ['PATHEXT', inheritedEnvironment.PATHEXT],
+      ['SystemRoot', inheritedEnvironment.SystemRoot],
+      ['TEMP', inheritedEnvironment.TEMP],
+      ['TMP', inheritedEnvironment.TMP],
+      ['USERPROFILE', inheritedEnvironment.USERPROFILE],
+      ['WINDIR', inheritedEnvironment.WINDIR],
+    ] : [],
+    ...Object.entries(proxyEnvironment),
+  ].filter(([, value]) => value !== undefined && value !== ''))
+}
 
 let mainWindow
 let harnessProcess
@@ -76,23 +76,6 @@ const desktopWebRuntimePatch = `# The desktop shell owns the local page and neve
     surfaceContext: true
     trustedHosts: []
 `
-const desktopProfileManifest = `${JSON.stringify({
-  name: 'dsh-profile-desktop',
-  private: true,
-  dependencies: {},
-  dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } },
-}, undefined, 2)}
-`
-const desktopProfilePatch = `# The desktop profile is reserved for the Electron shell.
-[]
-`
-const desktopProfileWorkspace = `packages:
-  - .
-
-nodeLinker: hoisted
-autoInstallPeers: false
-`
-
 /** Escape one diagnostic value before rendering it into the local status page. */
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, character => ({
@@ -130,32 +113,6 @@ function closeHarnessLog() {
 /** Quote one literal for the POSIX shell that owns the packaged macOS child process. */
 function shellQuote(value) {
   return `'${value.replaceAll("'", "'\"'\"'")}'`
-}
-
-/** Report whether a single-writer profile initialization found its expected file. */
-function isAlreadyExists(error) {
-  return error instanceof Error && 'code' in error && error.code === 'EEXIST'
-}
-
-/** Write one desktop profile file without replacing user-owned contents. */
-async function writeIfAbsent(path, content) {
-  try {
-    await writeFile(path, content, { encoding: 'utf8', flag: 'wx' })
-  } catch (error) {
-    if (!isAlreadyExists(error)) throw error
-  }
-}
-
-/** Prepare the dedicated desktop profile while retaining the shared Harness home data. */
-async function prepareDesktopProfile() {
-  if (homeDirectory === undefined) throw new Error('DeepSeek Harness cannot resolve the current user home directory.')
-  const profileDirectory = join(homeDirectory, '.dsh', 'profiles', desktopProfileName)
-  await mkdir(profileDirectory, { recursive: true })
-  await Promise.all([
-    writeIfAbsent(join(profileDirectory, 'package.json'), desktopProfileManifest),
-    writeIfAbsent(join(profileDirectory, 'cordis.patch.yml'), desktopProfilePatch),
-    writeIfAbsent(join(profileDirectory, 'pnpm-workspace.yaml'), desktopProfileWorkspace),
-  ])
 }
 
 /** Write the final web-runtime overlay that keeps the private page inside Electron. */
@@ -221,15 +178,28 @@ function stopHarness() {
 /** Start the packaged CLI as an owned private loopback server. */
 async function startHarness() {
   harnessPort = await reservePort()
-  await prepareDesktopProfile()
+  const runtime = app.isPackaged
+    ? await resolveDesktopRuntime({
+      homeDirectory,
+      bundledRuntimeDirectory,
+      platform: process.platform,
+      arch: process.arch,
+    })
+    : {
+      harnessDirectory: repositoryDirectory,
+      nodeExecutable: developmentNodeExecutable,
+      source: 'development',
+    }
+  await prepareDesktopProfile(homeDirectory, runtime.harnessDirectory)
+  console.info(`[desktop] using ${runtime.source} runtime${runtime.version === undefined ? '' : ` ${runtime.version}`}`)
   const logDirectory = join(app.getPath('userData'), 'logs')
   await mkdir(logDirectory, { recursive: true })
   harnessLog = join(logDirectory, 'harness.log')
   harnessLogHandle = await open(harnessLog, 'a')
   const runtimePatch = await writeDesktopWebRuntimePatch()
   const cli = app.isPackaged
-    ? join(harnessDirectory, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-    : join(harnessDirectory, 'apps', 'cli', 'lib', 'bin.js')
+    ? join(runtime.harnessDirectory, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+    : join(runtime.harnessDirectory, 'apps', 'cli', 'lib', 'bin.js')
   const harnessArgs = [
     cli,
     '--profile', desktopProfileName,
@@ -239,17 +209,17 @@ async function startHarness() {
   ]
   const useWindowsLauncher = process.platform === 'win32'
   harnessProcess = spawn(
-    useWindowsLauncher ? nodeExecutable : '/bin/sh',
-    useWindowsLauncher ? harnessArgs : ['-c', `${[nodeExecutable, ...harnessArgs].map(shellQuote).join(' ')} & wait $!`],
+    useWindowsLauncher ? runtime.nodeExecutable : '/bin/sh',
+    useWindowsLauncher ? harnessArgs : ['-c', `${[runtime.nodeExecutable, ...harnessArgs].map(shellQuote).join(' ')} & wait $!`],
     {
-    cwd: harnessDirectory,
+    cwd: runtime.harnessDirectory,
     detached: process.platform !== 'win32',
     windowsHide: true,
     // Electron exposes pipe output as Unix sockets on macOS. A packaged Node
     // child can stall before loading its modules on those descriptors, so the
     // child's own stdout and stderr go straight to its diagnostic file.
     stdio: ['ignore', harnessLogHandle.fd, harnessLogHandle.fd],
-    env: childEnvironment,
+    env: childEnvironment(runtime.nodeExecutable),
     },
   )
   harnessProcess.on('error', error => {

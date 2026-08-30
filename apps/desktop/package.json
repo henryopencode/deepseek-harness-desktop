@@ -2,13 +2,14 @@
   "name": "@deepseek-ai/dsh-desktop",
   "productName": "DeepSeek Harness",
   "description": "Electron desktop launcher that owns a local DeepSeek Harness web process.",
-  "version": "0.2.8",
+  "version": "0.2.11",
   "private": true,
   "type": "module",
   "main": "main.mjs",
   "scripts": {
     "dev": "electron .",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "runtime:activate": "node activate-runtime.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -23,9 +24,7 @@
     "@deepseek-ai/dsh-atomic-write": "workspace:^",
     "@deepseek-ai/dsh-session-telemetry": "workspace:^",
     "@deepseek-ai/dsh-session-title-llm": "workspace:^",
-    "@deepseek-ai/dsh-sprout-widget": "workspace:^",
     "@deepseek-ai/dsh-web-app": "workspace:^",
-    "@deepseek-ai/dsh-whale-widget": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
     "dsh-jsonrpc-agent-pkg": "workspace:*"
   }

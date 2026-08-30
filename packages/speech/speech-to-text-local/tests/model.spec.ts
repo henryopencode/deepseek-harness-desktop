@@ -1,3 +1,4 @@
+import { totalmem } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
 import { availableMemoryBytes, resolveSpeechToTextModel } from '../src/model.ts'
 
@@ -20,6 +21,12 @@ describe('local speech model resolution', () => {
   it('prefers Node constrained memory over physical memory', () => {
     const constrained = vi.spyOn(process, 'constrainedMemory').mockReturnValue(3 * 1024 ** 3)
     expect(availableMemoryBytes()).toBe(3 * 1024 ** 3)
+    constrained.mockRestore()
+  })
+
+  it('ignores an unlimited cgroup sentinel that exceeds the safe integer range', () => {
+    const constrained = vi.spyOn(process, 'constrainedMemory').mockReturnValue(2 ** 64)
+    expect(availableMemoryBytes()).toBe(totalmem())
     constrained.mockRestore()
   })
 })

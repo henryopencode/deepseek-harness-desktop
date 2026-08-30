@@ -14,6 +14,8 @@ Status: implemented
 
 打包脚本先从桌面依赖根以 pnpm 的 hoisted node linker 运行 `pnpm deploy`。随后会把 pnpm 否则会保留为构建机器链接的两个 vendored runtime 包实体化，在 Electron resources 下生成平台匹配、自包含的运行时闭包，也不会保留 Windows 资源管理器无法解压的深层虚拟仓库路径。包还携带匹配的 Node 可执行文件与预编译的平台原生 `whisper-cli`；每个 macOS Whisper 二进制都会写入 `@loader_path` runpath，使动态库在安装后仍能正确解析。模型数据仍保存在用户本地，并在首次使用时下载。浏览器听写会把 16 kHz 单声道 PCM WAV 直接提交给 Whisper，因此安装包不携带 FFmpeg 或 FFprobe。macOS 会提供 ARM64 ZIP 和拖拽安装 DMG；Linux 将 x64 可执行文件夹归档为 `.tar.gz`；Windows 归档包含 `.exe` 的 x64 文件夹，并将其打包为当前用户安装的 NSIS 安装程序，创建桌面和开始菜单快捷方式并登记到 Windows 已安装的应用。GitHub `Desktop Packages` workflow 在各自原生 runner 上构建三个平台，使用短 Windows 暂存路径，验证 Windows 归档路径不超过 220 个字符，先解压便携包再探测包内 Whisper 可执行文件，检查 macOS 相对 runpath 与 DMG，安装和卸载 Windows 安装程序并检查快捷方式和安装登记，然后将全部产物上传到桌面 Release。
 
+同一个打包 runtime 也会作为独立的带版本归档发布；其选择和原子激活规则见[版本化桌面 runtime 说明](../architecture/2026-08-28-versioned-desktop-runtime.md)。
+
 ## Alternatives considered
 
 **保留 Swift 启动器。** 拒绝，因为 AppKit 实现无法生成 Linux 或 Windows 可执行文件。

@@ -54,7 +54,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package -- --platform linux --arch x6
 pnpm --filter @deepseek-ai/dsh-desktop run package -- --platform win32 --arch x64
 ```
 
-The output is written to `release/`. Windows packaging needs NSIS (`makensis.exe`). The Windows build script can reuse a verified x64 Node runtime and a prebuilt x64 Whisper directory when a native rebuild is unavailable:
+The output is written to `release/`. Each platform build emits both the installable shell artifact and a matching `DeepSeek-Harness-runtime-<platform>-<arch>` archive for later runtime updates. Windows packaging needs NSIS (`makensis.exe`). The Windows build script can reuse a verified x64 Node runtime and a prebuilt x64 Whisper directory when a native rebuild is unavailable:
 
 ```powershell
 $env:DSH_DESKTOP_NODE_RUNTIME = 'C:\path\to\node-runtime'
@@ -71,9 +71,11 @@ Run the focused checks before publishing:
 ```sh
 node --check apps/desktop/main.mjs
 node --check apps/desktop/scripts/package.mjs
-node --test apps/desktop/scripts/package-links.test.mjs
+node --check apps/desktop/runtime.mjs
+node --check apps/desktop/activate-runtime.mjs
+node --test apps/desktop/runtime.test.mjs apps/desktop/profile.test.mjs apps/desktop/scripts/package-links.test.mjs
 pnpm run build
 pnpm run doc-sync
 ```
 
-The `Desktop Packages` workflow can build native artifacts on GitHub Actions. For a local build, upload only artifacts produced by the current commit and verify their SHA256 values. The expected installable artifacts are `DeepSeek-Harness-Setup-x64.exe` for Windows and `DeepSeek-Harness-macos-arm64.dmg` for Apple Silicon macOS. The Windows installer is currently unsigned, so Windows SmartScreen may show a trust warning until an Authenticode certificate is configured.
+The `Desktop Packages` workflow can build native artifacts on GitHub Actions. For a local build, upload only artifacts produced by the current commit and verify their SHA256 values. The expected installable artifacts are `DeepSeek-Harness-Setup-x64.exe` for Windows and `DeepSeek-Harness-macos-arm64.dmg` for Apple Silicon macOS; the matching runtime archives are optional update payloads. The Windows installer is currently unsigned, so Windows SmartScreen may show a trust warning until an Authenticode certificate is configured.

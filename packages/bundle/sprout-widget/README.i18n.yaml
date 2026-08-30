@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/bundle/sprout-widget/README.md
-README.md: 602b9266c3cc5ba563338940a4cf96f8546fe0d6
-README.zh.md: 016bc19864756864ac448366dc8f656f8ebc81de
+README.md: dd48e8c7ab2d5c9ee83ce2f558a1426604253124
+README.zh.md: e39483d419bd1ef3a935e39117106e3ca69e975a

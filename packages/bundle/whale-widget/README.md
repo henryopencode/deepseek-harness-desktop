@@ -11,7 +11,7 @@ dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
 dsh plugin --profile desktop add @deepseek-ai/dsh-whale-widget
 ```
 
-The plugin adds no default profile row. The desktop package carries the plugin so it can be enabled from the desktop profile without downloading a second runtime.
+The Web and desktop profiles do not add this plugin by default.
 
 ## Behavior
 
