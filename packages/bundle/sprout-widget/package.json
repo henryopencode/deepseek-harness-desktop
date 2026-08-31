@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-sprout-widget",
   "description": "A draggable sprout status widget for the DSH Web surface: grows green while the harness is working and greys when idle, driven by the session turn lifecycle.",
-  "version": "0.1.0-rc.8",
+  "version": "0.1.0-rc.9",
   "publishConfig": {
     "access": "public"
   },
