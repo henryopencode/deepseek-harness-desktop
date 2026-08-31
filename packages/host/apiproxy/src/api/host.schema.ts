@@ -88,3 +88,22 @@ export const hostUploadDroppedFileRequestSchema = z.object({
 export const hostUploadDroppedFileValueSchema = z.object({
   path: z.string().min(1),
 }) satisfies z.ZodType<Wire<ResponseValue<'host.uploadDroppedFile'>>>
+
+/** host.updateCheck request payload (empty object literal). */
+export const hostUpdateCheckRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'host.updateCheck'>>>
+
+/** host.updateCheck response value. */
+export const hostUpdateCheckValueSchema = z.object({
+  currentVersion: z.string(),
+  latestVersion: z.string(),
+  updateAvailable: z.boolean(),
+  releaseUrl: z.string().optional(),
+}) satisfies z.ZodType<Wire<ResponseValue<'host.updateCheck'>>>
+
+/** host.updateInstall request payload (empty object literal). */
+export const hostUpdateInstallRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'host.updateInstall'>>>
+
+/** host.updateInstall response value. */
+export const hostUpdateInstallValueSchema = z.object({
+  accepted: z.literal(true),
+}) satisfies z.ZodType<Wire<ResponseValue<'host.updateInstall'>>>

@@ -8,10 +8,10 @@
 
 ```sh
 dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
-dsh plugin --profile desktop add @deepseek-ai/dsh-whale-widget
+dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
 ```
 
-Web 和 desktop profile 默认都不会加入此插件。
+Web profile 默认不会加入此插件。
 
 ## 行为
 

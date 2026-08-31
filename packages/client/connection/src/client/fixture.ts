@@ -2660,6 +2660,12 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       // Deterministic upload: the fixture writes nothing, but answers with the
       // path a real host would produce under the session's project root.
       uploadDroppedFile: request => ok(request, { path: `${request.payload.cwd}/.dsh-uploads/${request.payload.name}` }),
+      // The fixture has no release feed, so the update prompt remains hidden
+      // while exercising the browser shell without a managed runtime.
+      updateCheck: request => ok(request, {
+        currentVersion: '0.0.0-fixture', latestVersion: '0.0.0-fixture', updateAvailable: false,
+      }),
+      updateInstall: request => ok(request, { accepted: true as const }),
     },
     workspace: {
       list: request => ok(request, {
@@ -3201,6 +3207,8 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'host.createDirectory': return this.api.host.createDirectory(request)
       case 'host.openPath': return this.api.host.openPath(request, new AbortController().signal)
       case 'host.uploadDroppedFile': return this.api.host.uploadDroppedFile(request, new AbortController().signal)
+      case 'host.updateCheck': return this.api.host.updateCheck(request)
+      case 'host.updateInstall': return this.api.host.updateInstall(request)
       case 'workspace.list': return this.api.workspace.list(request)
       case 'workspace.create': return this.api.workspace.create(request)
       case 'workspace.rename': return this.api.workspace.rename(request)

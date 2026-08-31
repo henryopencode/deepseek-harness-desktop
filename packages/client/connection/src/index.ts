@@ -95,6 +95,7 @@ const PRIVILEGED_METHODS = new Set([
   'host.pickDirectory',
   'host.openPath',
   'llm.discoverModels',
+  'host.updateInstall',
 ])
 
 /**

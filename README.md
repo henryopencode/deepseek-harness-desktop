@@ -22,6 +22,23 @@ npx @deepseek-ai/dsh web
 
 The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
 
+### Run the Web runtime archive
+
+GitHub Releases provide one `deepseek-harness-web-v*.tar.gz` archive for Windows, macOS, and Linux. Install Node.js 22.19 or newer (Node.js 24 is recommended), extract the archive, and run:
+
+```sh
+tar -xzf deepseek-harness-web-v*.tar.gz
+cd deepseek-harness-web-v*
+node install.mjs
+node run.mjs web --no-open
+```
+
+Open the URL printed by the command. `install.mjs` installs optional native dependencies for the target operating system, so do not copy `node_modules` from the build machine. The archive contains no Electron shell or user data. Settings, credentials, sessions, workspaces, and the local Whisper model remain in the normal Harness home; set `DSH_HOME` to use a separate data directory.
+
+For background service management with the same commands on Windows, macOS, and Linux, run `node start.mjs`, `node status.mjs`, and `node stop.mjs`. Pass Web options to `start.mjs`, for example `node start.mjs --port 8080`. The PID file and log are kept in `.dsh-runtime` inside the archive.
+
+To build this release archive from a checkout, run `pnpm run release:web`. The command performs the official build and writes one `release/deepseek-harness-web-v*.tar.gz` archive; upload that file to the release page.
+
 ### Run from source
 
 To run from a repository checkout:

@@ -79,6 +79,8 @@ function scriptedApi(overrides: {
       createDirectory: r => ok(r, { path: '/t/new' }),
       openPath: r => ok(r, { opened: true as const }),
       uploadDroppedFile: r => ok(r, { path: `${r.payload.cwd}/.dsh-uploads/${r.payload.name}` }),
+      updateCheck: err,
+      updateInstall: err,
       ...overrides.host,
     },
     workspace: {

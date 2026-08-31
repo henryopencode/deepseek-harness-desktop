@@ -5,7 +5,7 @@
 # Enable it in a profile with:
 #   dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
 # or:
-#   dsh plugin --profile desktop add @deepseek-ai/dsh-whale-widget
+#   dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
 
 - insert:
     - id: whale-widget

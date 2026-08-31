@@ -22,6 +22,23 @@ npx @deepseek-ai/dsh web
 
 该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.md)。
 
+### 使用 Web 运行包
+
+GitHub Releases 提供一个同时适用于 Windows、macOS 和 Linux 的 `deepseek-harness-web-v*.tar.gz` 归档。安装 Node.js 22.19 或更高版本（推荐 Node.js 24），解压归档后运行：
+
+```sh
+tar -xzf deepseek-harness-web-v*.tar.gz
+cd deepseek-harness-web-v*
+node install.mjs
+node run.mjs web --no-open
+```
+
+打开命令打印的 URL。`install.mjs` 会为目标操作系统安装可选原生依赖，因此不要复制构建机的 `node_modules`。归档不包含 Electron 外壳或用户数据。设置、凭据、会话、工作区和本地 Whisper 模型保存在正常的 Harness home 中；如需独立数据目录，可设置 `DSH_HOME`。
+
+如需在 Windows、macOS 和 Linux 上用同一组命令后台运行，使用 `node start.mjs`、`node status.mjs` 和 `node stop.mjs`。可将 Web 参数传给 `start.mjs`，例如 `node start.mjs --port 8080`。PID 文件和日志保存在归档内的 `.dsh-runtime` 目录。
+
+从源码仓库生成发布归档时，运行 `pnpm run release:web`。该命令会执行官方构建，并写出一个 `release/deepseek-harness-web-v*.tar.gz` 归档；将这个文件上传到 Release 页面即可。
+
 ### 从源码运行
 
 如需从仓库源码运行：

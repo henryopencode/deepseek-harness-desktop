@@ -44,6 +44,8 @@ export interface RpcMethodMap {
   'host.createDirectory': HostApi['createDirectory']
   'host.openPath': HostApi['openPath']
   'host.uploadDroppedFile': HostApi['uploadDroppedFile']
+  'host.updateCheck': HostApi['updateCheck']
+  'host.updateInstall': HostApi['updateInstall']
   'workspace.list': WorkspaceApi['list']
   'workspace.create': WorkspaceApi['create']
   'workspace.rename': WorkspaceApi['rename']

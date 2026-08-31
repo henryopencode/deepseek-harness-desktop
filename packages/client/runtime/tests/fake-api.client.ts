@@ -120,6 +120,13 @@ export class FakeApiClient implements IApiClient {
     () => Promise.resolve(ok({ opened: true as const }))
   onUploadDroppedFile: (payload: unknown) => Promise<RpcResponse<{ path: string }>> =
     () => Promise.resolve(ok({ path: '/f/.dsh-uploads/file' }))
+  onUpdateCheck: (payload: unknown) => Promise<RpcResponse<{
+    currentVersion: string
+    latestVersion: string
+    updateAvailable: boolean
+  }>> = () => Promise.resolve(ok({ currentVersion: '0-fake', latestVersion: '0-fake', updateAvailable: false }))
+  onUpdateInstall: (payload: unknown) => Promise<RpcResponse<{ accepted: true }>> =
+    () => Promise.resolve(ok({ accepted: true as const }))
 
   onListDirectory: (payload: unknown) => Promise<RpcResponse<{
     path: string
@@ -184,6 +191,8 @@ export class FakeApiClient implements IApiClient {
     createDirectory: (payload: unknown) => this.record('host.createDirectory', payload, this.onCreateDirectory(payload)),
     openPath: (payload: unknown) => this.record('host.openPath', payload, this.onOpenPath(payload)),
     uploadDroppedFile: (payload: unknown) => this.record('host.uploadDroppedFile', payload, this.onUploadDroppedFile(payload)),
+    updateCheck: (payload: unknown) => this.record('host.updateCheck', payload, this.onUpdateCheck(payload)),
+    updateInstall: (payload: unknown) => this.record('host.updateInstall', payload, this.onUpdateInstall(payload)),
   }
 
   // The archive-set field defaults at the binding below so list stubs keep

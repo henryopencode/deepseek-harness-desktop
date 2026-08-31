@@ -4,6 +4,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
@@ -647,6 +649,8 @@ export interface ApiProxyDefaults {
    * falls back to platform detection ({@link canOpenNativePath}).
    */
   canOpenPath?: () => boolean
+  /** Managed Web runtime root; update RPCs are unavailable when absent. */
+  webRuntimeRoot?: string
 }
 
 /** The tool/call payload fields the presenter path reads. */
@@ -1075,6 +1079,71 @@ function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceVie
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   }
+}
+
+/** Resolve the managed runtime updater without accepting a browser-supplied path. */
+function webUpdateScript(root: string | undefined): string | undefined {
+  if (root === undefined) return undefined
+  const script = join(root, 'update.mjs')
+  return existsSync(script) ? script : undefined
+}
+
+/** Run the updater's read-only check and parse its JSON result. */
+function runWebUpdateCheck(script: string): Promise<{
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl?: string
+}> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script, '--check', '--json'], {
+      cwd: dirname(script),
+      env: { ...process.env, DSH_WEB_RUNTIME_ROOT: dirname(script) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => { stdout += chunk })
+    child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    child.once('error', reject)
+    child.once('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `update check exited with code ${String(code)}`))
+        return
+      }
+      try {
+        const value: unknown = JSON.parse(stdout.trim())
+        if (typeof value !== 'object' || value === null) throw new Error('update check returned invalid JSON')
+        const record = value as Record<string, unknown>
+        if (typeof record.currentVersion !== 'string' || typeof record.latestVersion !== 'string' || typeof record.updateAvailable !== 'boolean') {
+          throw new Error('update check returned incomplete metadata')
+        }
+        resolve({
+          currentVersion: record.currentVersion,
+          latestVersion: record.latestVersion,
+          updateAvailable: record.updateAvailable,
+          ...typeof record.releaseUrl === 'string' ? { releaseUrl: record.releaseUrl } : {},
+        })
+      } catch (error) {
+        reject(error)
+      }
+    })
+  })
+}
+
+/** Launch the confirmed updater detached from the Web service it will replace. */
+function launchWebUpdate(script: string): void {
+  const child = spawn(process.execPath, [script, '--yes'], {
+    cwd: dirname(script),
+    env: { ...process.env, DSH_WEB_RUNTIME_ROOT: dirname(script) },
+    detached: true,
+    windowsHide: true,
+    stdio: 'ignore',
+  })
+  child.unref()
 }
 
 /**
@@ -2992,6 +3061,39 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             message: `host.uploadDroppedFile write failed: ${error instanceof Error ? error.message : String(error)}`,
             details: {},
           })
+        }
+      },
+
+      async updateCheck(request) {
+        const script = webUpdateScript(defaults.webRuntimeRoot)
+        if (script === undefined) {
+          return err(request, { code: 'internal', message: 'remote updates are unavailable in this deployment', details: {} })
+        }
+        try {
+          return ok(request, await runWebUpdateCheck(script))
+        } catch (error: unknown) {
+          return err(request, {
+            code: 'internal',
+            message: `remote update check failed: ${error instanceof Error ? error.message : String(error)}`,
+            details: {},
+          })
+        }
+      },
+
+      updateInstall(request) {
+        const script = webUpdateScript(defaults.webRuntimeRoot)
+        if (script === undefined) {
+          return Promise.resolve(err(request, { code: 'internal', message: 'remote updates are unavailable in this deployment', details: {} }))
+        }
+        try {
+          launchWebUpdate(script)
+          return Promise.resolve(ok(request, { accepted: true as const }))
+        } catch (error: unknown) {
+          return Promise.resolve(err(request, {
+            code: 'internal',
+            message: `remote update could not be started: ${error instanceof Error ? error.message : String(error)}`,
+            details: {},
+          }))
         }
       },
     },

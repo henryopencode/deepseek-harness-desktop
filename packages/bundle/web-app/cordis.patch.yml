@@ -118,6 +118,8 @@
     # shares. The base layer's agent-default-model service owns the default model.
     - id: api-gateway
       name: '@deepseek-ai/dsh-host-apiproxy'
+      config:
+        webRuntimeRoot: !!js process.env.DSH_WEB_RUNTIME_ROOT
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
@@ -311,6 +313,10 @@
 
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
+
+    # Loopback-only release check and user-confirmed managed runtime update.
+    - id: ui-runtime-update
+      name: '@deepseek-ai/dsh-client-ui-runtime-update'
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

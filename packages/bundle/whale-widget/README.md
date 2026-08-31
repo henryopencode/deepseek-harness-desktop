@@ -8,10 +8,10 @@ An opt-in draggable whale widget for the DeepSeek Harness browser surface. It di
 
 ```sh
 dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
-dsh plugin --profile desktop add @deepseek-ai/dsh-whale-widget
+dsh plugin --profile web add @deepseek-ai/dsh-whale-widget
 ```
 
-The Web and desktop profiles do not add this plugin by default.
+The Web profile does not add this plugin by default.
 
 ## Behavior
 

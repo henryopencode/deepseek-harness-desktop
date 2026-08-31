@@ -209,6 +209,8 @@
       "@deepseek-ai/dsh-client-ui-workflow-run": ["./packages/client/ui-workflow-run/src"],
       "@deepseek-ai/dsh-client-ui-input-trigger": ["./packages/client/ui-input-trigger/src"],
       "@deepseek-ai/dsh-client-ui-reference": ["./packages/client/ui-reference/src"],
+      "@deepseek-ai/dsh-client-ui-speech-input": ["./packages/client/ui-speech-input/src"],
+      "@deepseek-ai/dsh-client-ui-runtime-update": ["./packages/client/ui-runtime-update/src"],
       "@deepseek-ai/dsh-client-ui-commands": ["./packages/client/ui-commands/src"],
       "@deepseek-ai/dsh-client-ui-model-selection": ["./packages/client/ui-model-selection/src"],
       "@deepseek-ai/dsh-client-ui-goal": ["./packages/client/ui-goal/src"],

@@ -109,4 +109,19 @@ export interface HostApi {
     request: RpcRequest<{ name: string; content: string; cwd: string }>,
     signal: AbortSignal,
   ): Promise<RpcResponse<{ path: string }>>
+
+  /** Check the configured release feed without downloading an archive. */
+  updateCheck(
+    request: RpcRequest<{}>,
+  ): Promise<RpcResponse<{
+    currentVersion: string
+    latestVersion: string
+    updateAvailable: boolean
+    releaseUrl?: string
+  }>>
+
+  /** Start a confirmed local update; the updater restarts the managed service. */
+  updateInstall(
+    request: RpcRequest<{}>,
+  ): Promise<RpcResponse<{ accepted: true }>>
 }

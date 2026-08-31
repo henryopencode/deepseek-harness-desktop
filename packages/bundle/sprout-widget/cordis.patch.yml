@@ -6,7 +6,7 @@
 # Enable it in a profile with:
 #   dsh plugin --profile web add @deepseek-ai/dsh-sprout-widget
 # or:
-#   dsh plugin --profile desktop add @deepseek-ai/dsh-sprout-widget
+#   dsh plugin --profile web add @deepseek-ai/dsh-sprout-widget
 #
 # The row needs the webServer service, so it pairs with the dsh-web-app bundle
 # layer (the browser-surface patch over dsh-base).

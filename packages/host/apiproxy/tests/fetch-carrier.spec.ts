@@ -162,6 +162,12 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async uploadDroppedFile(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { path: `${request.payload.cwd}/.dsh-uploads/${request.payload.name}` } } }
       },
+      async updateCheck(request) {
+        return { rpcId: request.rpcId, result: { ok: false, error: { code: 'internal', message: 'stub', details: {} } } }
+      },
+      async updateInstall(request) {
+        return { rpcId: request.rpcId, result: { ok: false, error: { code: 'internal', message: 'stub', details: {} } } }
+      },
     },
     workspace: {
       async list(request) {
