@@ -56,6 +56,16 @@ describe('runtime update notice', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('更新失败：不可用')
     expect((screen.getByRole('button', { name: '立即更新' }) as HTMLButtonElement).disabled).toBe(false)
   })
+
+  it('shows remote update status without offering a server install action', async () => {
+    const remoteProps = props()
+    delete remoteProps.install
+    render(<RuntimeUpdateNotice {...remoteProps} />)
+    expect(await screen.findByRole('dialog', { name: '发现新版本' })).not.toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('远程部署请通过 SSH 更新服务器。')
+    expect(screen.queryByRole('button', { name: '立即更新' })).toBeNull()
+    expect(screen.getByRole('button', { name: '稍后' })).not.toBeNull()
+  })
 })
 
 describe('waitForVersion', () => {

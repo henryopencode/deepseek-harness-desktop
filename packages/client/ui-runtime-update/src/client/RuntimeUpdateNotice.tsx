@@ -15,7 +15,8 @@ export interface RuntimeUpdateInfo {
 /** Browser callbacks supplied by the plugin closure. */
 export interface RuntimeUpdateInjected {
   check: () => Promise<RuntimeUpdateInfo>
-  install: () => Promise<void>
+  /** Install locally managed runtimes; remote deployments expose check-only status. */
+  install?: () => Promise<void>
   readVersion: () => Promise<string>
   /** Optional page reload hook, injectable for non-browser tests. */
   reload?: () => void
@@ -97,7 +98,7 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
   }, [busy])
 
   const onInstall = useCallback(async () => {
-    if (busy || info === null) return
+    if (busy || info === null || install === undefined) return
     setBusy(true)
     setError(null)
     try {
@@ -128,13 +129,16 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
       footer={(
         <>
           <Button variant="outline" onClick={close} disabled={busy}>{t('later')}</Button>
-          <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
-            {busy ? t('installing') : t('install')}
-          </Button>
+          {install !== undefined && (
+            <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
+              {busy ? t('installing') : t('install')}
+            </Button>
+          )}
         </>
       )}
     >
       <div className={css.body}>
+        {install === undefined && <p className={css.status} role="status">{t('remote')}</p>}
         {busy && <p className={css.status} role="status">{t('waiting')}</p>}
         {error !== null && <p className={css.error} role="alert">{error}</p>}
       </div>

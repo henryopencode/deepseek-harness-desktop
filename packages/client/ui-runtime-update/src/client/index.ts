@@ -1,4 +1,4 @@
-/** Browser Web runtime update prompt, mounted only for loopback pages. */
+/** Browser Web runtime update prompt for local and authenticated remote pages. */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
@@ -30,21 +30,22 @@ function valueFrom<T>(response: RpcResult<T>): T {
   return response.value
 }
 
-/** Register the loopback-only update prompt. */
+/** Register the update prompt for local and authenticated remote pages. */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-runtime-update: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
-  if (!connection.isLoopback) return
 
   const injected = (): RuntimeUpdateInjected => ({
     check: async (): Promise<RuntimeUpdateInfo> => {
       const response = await connection.api.host.updateCheck({})
       return valueFrom(response.result)
     },
-    install: async (): Promise<void> => {
-      const response = await connection.api.host.updateInstall({})
-      valueFrom(response.result)
-    },
+    ...connection.isLoopback ? {
+      install: async (): Promise<void> => {
+        const response = await connection.api.host.updateInstall({})
+        valueFrom(response.result)
+      },
+    } : {},
     readVersion: async (): Promise<string> => {
       const response = await connection.api.host.describe({})
       return valueFrom(response.result).version

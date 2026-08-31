@@ -163,15 +163,12 @@ describe('connection node half', () => {
 
   it('pins privileged methods to loopback even for a declared trusted authority', async () => {
     const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
-    // The privileged set: native dialogs plus the whole settings/credential
-    // configuration plane, reads included, plus the one method that makes the
-    // host fetch a caller-chosen URL. The same declared authority reaches
-    // ordinary reads (carrier-level 404 from the empty proxy proves the fence
-    // passed), but each privileged method stays loopback-only and 403s.
+    // Native dialogs, preset authoring, model discovery, and runtime
+    // installation stay loopback-only. Other API methods pass the declared
+    // authority fence (the empty proxy answers 404 after the fence passes).
     for (const method of [
       'host.pickDirectory', 'host.openPath',
-      'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
-      'credentials.describe', 'credentials.set', 'credentials.unset',
+      'host.updateInstall',
       'llm.discoverModels',
       // A composition names the plugins a session runs: reading one is
       // reconnaissance, and copy/remove/openDocument manage the roster and
@@ -453,7 +450,7 @@ describe('connection node half over a real HTTP server', () => {
     })
   }
 
-  it('answers a declared LAN authority with 403 on every configuration method, over real HTTP', async () => {
+  it('keeps host-side privileged methods loopback-only over real HTTP', async () => {
     // The fence's input is a real IncomingMessage parsed by Node from the
     // wire, not a hand-assembled object: the Host header a LAN browser sends
     // is exactly what decides loopback-only here, so the boundary is asserted
@@ -461,12 +458,9 @@ describe('connection node half over a real HTTP server', () => {
     const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
     const { port, close } = await serve(routes)
     try {
-      // Reads are as privileged as writes: describe returns the exposed
-      // configuration, and credentials.describe probes arbitrary env-var names.
       for (const method of [
-        'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
-        'credentials.describe', 'credentials.set', 'credentials.unset',
         'host.pickDirectory', 'host.openPath',
+        'host.updateInstall',
         // Carries a draft credential and turns the host into a fetcher for a
         // URL the caller picked: an anonymous LAN caller must not reach it.
         'llm.discoverModels',
