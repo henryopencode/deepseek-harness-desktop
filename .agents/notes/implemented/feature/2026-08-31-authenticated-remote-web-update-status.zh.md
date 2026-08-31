@@ -12,7 +12,7 @@ Status: implemented
 
 远程部署在 Harness Web 服务器前放置 Nginx。Nginx 终止 HTTPS，并对 SPA、HTTP API 和 WebSocket upgrade 应用 Basic Auth。Harness 进程只监听 `127.0.0.1`，应用端口不会直接暴露。
 
-浏览器更新插件会在本机页面和完成鉴权的远程页面调用 `host.updateCheck`。`host.updateInstall` 在 Connection 请求栅栏处保持仅回环可用；远程页面显示可用版本并提示通过 SSH 更新服务器。限制在 API 分发前执行，因此隐藏按钮不是安全控制。
+浏览器更新插件会在本机页面和完成鉴权的远程页面于 shell 挂载时调用 `host.updateCheck`，并在页面保持打开时每五分钟重新检查。用户选择“稍后”后，页面会忽略该发布版本；只有出现更晚的版本时才会再次显示提示。`host.updateInstall` 在 Connection 请求栅栏处保持仅回环可用；远程页面显示可用版本并提示通过 SSH 更新服务器。限制在 API 分发前执行，因此隐藏按钮不是安全控制。
 
 使用 IP 部署时，可以使用带 IP Subject Alternative Name 的自签名证书。浏览器需要操作员信任该证书后才会授予麦克风权限；受公共信任的证书需要域名或隧道。
 

@@ -12,6 +12,9 @@ export interface RuntimeUpdateInfo {
   releaseUrl?: string
 }
 
+/** Delay between release-feed checks while a page stays open. */
+export const RUNTIME_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000
+
 /** Browser callbacks supplied by the plugin closure. */
 export interface RuntimeUpdateInjected {
   check: () => Promise<RuntimeUpdateInfo>
@@ -77,25 +80,42 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const alive = useRef(true)
+  const dismissedVersion = useRef<string | undefined>(undefined)
 
   useEffect(() => () => { alive.current = false }, [])
 
   useEffect(() => {
     let cancelled = false
-    void check().then((next) => {
-      if (cancelled || !next.updateAvailable) return
-      setInfo(next)
-      setOpen(true)
-    }).catch(() => {
-      // A missing feed, an offline machine, and a source checkout all keep the
-      // shell quiet; the updater remains available from its CLI entry point.
-    })
-    return () => { cancelled = true }
+    let checking = false
+    const checkForUpdate = async (): Promise<void> => {
+      if (checking) return
+      checking = true
+      try {
+        const next = await check()
+        if (cancelled || !next.updateAvailable || dismissedVersion.current === next.latestVersion) return
+        setInfo(next)
+        setOpen(true)
+      } catch {
+        // A missing feed, an offline machine, and a source checkout all keep the
+        // shell quiet; the updater remains available from its CLI entry point.
+      } finally {
+        checking = false
+      }
+    }
+    void checkForUpdate()
+    const timer = setInterval(() => { void checkForUpdate() }, RUNTIME_UPDATE_CHECK_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
   }, [check])
 
   const close = useCallback(() => {
-    if (!busy) setOpen(false)
-  }, [busy])
+    if (!busy) {
+      if (info !== null) dismissedVersion.current = info.latestVersion
+      setOpen(false)
+    }
+  }, [busy, info])
 
   const onInstall = useCallback(async () => {
     if (busy || info === null || install === undefined) return
