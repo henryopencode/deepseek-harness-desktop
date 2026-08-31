@@ -116,6 +116,7 @@ writeFileSync(join(staging, 'run.mjs'), [
   "import { existsSync, readFileSync } from 'node:fs'",
   "import { dirname, join } from 'node:path'",
   "import { fileURLToPath } from 'node:url'",
+  "import { isRuntimeInstalled } from './web-runtime-install.mjs'",
   "const webRuntimeRoot = dirname(fileURLToPath(import.meta.url))",
   "const current = JSON.parse(readFileSync(join(webRuntimeRoot, 'current.json'), 'utf8'))",
   "if (typeof current.version !== 'string') throw new Error('The extracted runtime has no active version')",
