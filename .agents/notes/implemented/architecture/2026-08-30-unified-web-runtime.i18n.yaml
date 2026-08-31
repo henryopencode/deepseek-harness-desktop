@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-30-unified-web-runtime.md
-2026-08-30-unified-web-runtime.md: e7075a9a985944915d61c2ff4209da0194c3fdf2
-2026-08-30-unified-web-runtime.zh.md: 1ea02fb4391ce96d5c3f2c426a55e2ef21992761
+2026-08-30-unified-web-runtime.md: 25dd0916196a27edc0d077fd8b68f3f87eaa2165
+2026-08-30-unified-web-runtime.zh.md: 186d0e78c3962a9f3327c93a2dfe4785a5682bea

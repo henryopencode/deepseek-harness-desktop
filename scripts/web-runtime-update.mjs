@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, r
 import { createInterface } from 'node:readline/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { installRuntimeDependencies, isRuntimeInstalled } from './web-runtime-install.mjs'
 
 const runtimeRoot = resolve(process.env.DSH_WEB_RUNTIME_ROOT ?? dirname(fileURLToPath(import.meta.url)))
 const stateRoot = join(runtimeRoot, '.dsh-runtime')
@@ -213,8 +214,7 @@ function startService(args) {
  * later rollback, and replacing it would risk discarding a known-good copy.
  */
 function isInstalledVersion(root) {
-  return existsSync(join(root, 'package.json'))
-    && existsSync(join(root, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
+  return existsSync(join(root, 'package.json')) && isRuntimeInstalled(root)
 }
 
 async function applyUpdate(info, restart) {
@@ -246,11 +246,8 @@ async function applyUpdate(info, restart) {
       const extracted = spawnSync('tar', ['-xzf', archivePath, '-C', extractedRoot, '--no-same-owner'], { stdio: 'inherit' })
       if (extracted.status !== 0) throw new Error('could not extract the downloaded Web archive')
       if (!existsSync(join(stagedVersionRoot, 'package.json'))) throw new Error('downloaded Web archive is incomplete')
-      const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-      const installed = spawnSync(npm, ['install', '--no-audit', '--no-fund', '--omit=dev'], { cwd: stagedVersionRoot, stdio: 'inherit' })
-      if (installed.status !== 0 || !isInstalledVersion(stagedVersionRoot)) {
-        throw new Error('could not install dependencies for the downloaded Web archive')
-      }
+      installRuntimeDependencies(stagedVersionRoot)
+      if (!isInstalledVersion(stagedVersionRoot)) throw new Error('could not install dependencies for the downloaded Web archive')
       renameSync(stagedVersionRoot, targetRoot)
     }
 

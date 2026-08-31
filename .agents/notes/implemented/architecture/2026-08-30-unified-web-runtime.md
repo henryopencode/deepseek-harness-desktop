@@ -10,7 +10,7 @@ Maintaining an Electron shell created separate platform packages, duplicated rel
 
 ## Decision
 
-The product ships one cross-platform `tar.gz` Web runtime instead of an Electron application. The archive contains the built dsh packages, Web frontend, vendored runtime tarballs, the Landlock entry package, and Node launch scripts. A target machine installs Node.js 22.19 or newer and runs `node install.mjs`; npm resolves optional native dependencies for that machine's operating system and architecture. `node run.mjs web` starts the browser server in the foreground, while `node start.mjs`, `node status.mjs`, and `node stop.mjs` manage one background Web server with the same commands on every supported operating system. The existing Web profile and local Whisper speech model remain available.
+The product ships one cross-platform `tar.gz` Web runtime instead of an Electron application. The archive contains the built dsh packages, Web frontend, vendored runtime tarballs, the Landlock entry package, and Node launch scripts. A target machine installs Node.js 22.19 or newer and runs `node install.mjs`; npm resolves optional native dependencies for that machine's operating system and architecture, then CMake builds nodejs-whisper's bundled `whisper-cli`. `node run.mjs web` starts the browser server in the foreground, while `node start.mjs`, `node status.mjs`, and `node stop.mjs` manage one background Web server with the same commands on every supported operating system. The existing Web profile and local Whisper speech model remain available.
 
 The archive never includes user settings, credentials, sessions, workspaces, or Whisper model data. Those remain in the normal Harness home and can be redirected with `DSH_HOME`. `pnpm run release:web` performs the official build and writes the single archive; GitHub release automation publishes that Web runtime artifact. Electron source and platform-specific desktop packages are not part of the product release.
 
@@ -24,4 +24,4 @@ The archive never includes user settings, credentials, sessions, workspaces, or 
 
 ## Consequences
 
-Users download and extract one archive on any supported operating system and complete one dependency-install step. The trade-off is a Node.js prerequisite, a writable install directory, and network access for the first npm install; Windows users also need a tar.gz extraction tool. Existing user data and the local Whisper model survive runtime replacement because they live outside the archive.
+Users download and extract one archive on any supported operating system and complete one dependency-install step. The trade-off is a Node.js prerequisite, CMake and a native C/C++ build toolchain, a writable install directory, and network access for the first npm install; Windows users also need a tar.gz extraction tool. Existing user data and the local Whisper model survive runtime replacement because they live outside the archive.

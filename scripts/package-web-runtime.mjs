@@ -87,23 +87,22 @@ function releaseRepository() {
 writeFileSync(join(staging, 'update-config.json'), JSON.stringify({ repository: releaseRepository() }, null, 2) + '\n')
 
 writeFileSync(join(staging, 'install.mjs'), [
-  "import { spawnSync } from 'node:child_process'",
   "import { existsSync, readFileSync } from 'node:fs'",
   "import { dirname, join } from 'node:path'",
   "import { fileURLToPath } from 'node:url'",
+  "import { isRuntimeInstalled } from './web-runtime-install.mjs'",
+  "import { installRuntimeDependencies } from './web-runtime-install.mjs'",
   "const webRuntimeRoot = dirname(fileURLToPath(import.meta.url))",
   "const current = JSON.parse(readFileSync(join(webRuntimeRoot, 'current.json'), 'utf8'))",
   "if (typeof current.version !== 'string') throw new Error('The extracted runtime has no active version')",
   "const runtimeRoot = join(webRuntimeRoot, 'versions', current.version)",
   "if (!existsSync(join(runtimeRoot, 'package.json'))) throw new Error('The extracted runtime is incomplete')",
-  "const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'",
-  "const result = spawnSync(npm, ['install', '--no-audit', '--no-fund', '--omit=dev'], { cwd: runtimeRoot, stdio: 'inherit' })",
-  'if (result.error) throw result.error',
-  'process.exit(result.status ?? 1)',
+  'installRuntimeDependencies(runtimeRoot)',
 ].join('\n') + '\n')
 
 copyFileSync(join(root, 'scripts/web-runtime-manager.mjs'), join(staging, 'manage.mjs'))
 copyFileSync(join(root, 'scripts/web-runtime-update.mjs'), join(staging, 'update.mjs'))
+copyFileSync(join(root, 'scripts/web-runtime-install.mjs'), join(staging, 'web-runtime-install.mjs'))
 
 for (const [entry, command] of [['start.mjs', 'start'], ['stop.mjs', 'stop'], ['status.mjs', 'status']]) {
   writeFileSync(join(staging, entry), [
@@ -122,7 +121,7 @@ writeFileSync(join(staging, 'run.mjs'), [
   "if (typeof current.version !== 'string') throw new Error('The extracted runtime has no active version')",
   "const runtimeRoot = join(webRuntimeRoot, 'versions', current.version)",
   "const bin = join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')",
-  "if (!existsSync(bin)) throw new Error('Runtime is not installed. Run node install.mjs first.')",
+  "if (!existsSync(bin) || !isRuntimeInstalled(runtimeRoot)) throw new Error('Runtime is not installed. Run node install.mjs first.')",
   "const args = process.argv.slice(2)",
   "const child = spawn(process.execPath, [bin, ...(args.length === 0 ? ['web'] : args)], { stdio: 'inherit', cwd: runtimeRoot, env: { ...process.env, DSH_RUNTIME_ROOT: runtimeRoot, DSH_WEB_RUNTIME_ROOT: webRuntimeRoot } })",
   "child.on('exit', (code, signal) => { if (signal) process.kill(process.pid, signal); else process.exit(code ?? 1) })",
@@ -137,7 +136,7 @@ writeFileSync(join(staging, 'README.md'), [
   '',
   '1. Install Node.js 22.19 or newer (Node.js 24 is recommended).',
   '2. Extract this archive.',
-  '3. Run node install.mjs in the extracted directory. npm resolves optional native dependencies for the current operating system.',
+  '3. Run node install.mjs in the extracted directory. It resolves JavaScript dependencies and builds the local Whisper CLI; CMake plus a native C/C++ build toolchain are required for that step.',
   '4. Run node run.mjs web --no-open and open the printed URL. Omit --no-open for a local launch that opens the default browser.',
   '',
   'User settings, credentials, sessions, workspaces, and the local Whisper model stay outside this archive in the normal Harness home. Set DSH_HOME when a separate data directory is required.',
@@ -156,7 +155,7 @@ writeFileSync(join(staging, 'README.zh.md'), [
   '',
   '1. 安装 Node.js 22.19 或更高版本（推荐 Node.js 24）。',
   '2. 解压归档。',
-  '3. 在解压目录运行 node install.mjs，npm 会按当前操作系统解析可选原生依赖。',
+  '3. 在解压目录运行 node install.mjs。它会解析 JavaScript 依赖并构建本地 Whisper CLI；这一步需要 CMake 和本机 C/C++ 构建工具链。',
   '4. 运行 node run.mjs web --no-open，打开终端打印的 URL。本地启动时省略 --no-open 会自动打开默认浏览器。',
   '',
   '用户设置、凭据、会话、工作区和本地 Whisper 模型保存在归档之外的 Harness home 中。如需独立数据目录，可设置 DSH_HOME。',

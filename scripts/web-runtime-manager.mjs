@@ -2,6 +2,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, write
 import { spawn } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isRuntimeInstalled } from './web-runtime-install.mjs'
 
 const runtimeRoot = dirname(fileURLToPath(import.meta.url))
 const stateRoot = join(runtimeRoot, '.dsh-runtime')
@@ -24,7 +25,9 @@ export function activeRuntimeRoot() {
     throw new Error('current.json has no valid runtime version')
   }
   const activeRoot = join(runtimeRoot, 'versions', current.version)
-  if (!existsSync(join(activeRoot, 'package.json'))) throw new Error('Current runtime version is incomplete. Run node install.mjs first.')
+  if (!existsSync(join(activeRoot, 'package.json')) || !isRuntimeInstalled(activeRoot)) {
+    throw new Error('Current runtime version is incomplete. Run node install.mjs first.')
+  }
   return activeRoot
 }
 
@@ -69,7 +72,7 @@ async function withLock(operation) {
 }
 
 function requireInstalled() {
-  if (!existsSync(binPath())) throw new Error('Runtime is not installed. Run node install.mjs first.')
+  if (!isRuntimeInstalled(activeRuntimeRoot())) throw new Error('Runtime is not installed. Run node install.mjs first.')
 }
 
 function logText() {
