@@ -163,7 +163,10 @@ jobs:
   publish-web-release:
     name: Publish Web runtime GitHub Release
     if: inputs.publish && startsWith(github.ref, 'refs/tags/dsh-v')
-    needs: [pack, publish]
+    # The Web runtime is published as a GitHub Release independently of npm.
+    # npm credentials or an optional npm environment approval must not hide the
+    # update feed used by installed Web runtimes.
+    needs: pack
     runs-on: ubuntu-24.04
     permissions:
       contents: write
