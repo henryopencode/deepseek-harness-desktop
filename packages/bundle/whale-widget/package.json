@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-whale-widget",
   "description": "A draggable whale balance widget for the DSH Web surface: shows the DeepSeek API balance, today's usage (ledger or realtime mode), and per-turn consumption, with sound, animations, and random lines.",
-  "version": "0.1.0-rc.13",
+  "version": "0.1.0-rc.14",
   "publishConfig": {
     "access": "public"
   },
