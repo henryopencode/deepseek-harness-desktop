@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-speech-input",
   "description": "Codex-style microphone recording control backed by the local speechToTextLocal Remote",
-  "version": "0.1.0-rc.20",
+  "version": "0.1.0-rc.21",
   "publishConfig": {
     "access": "public"
   },
