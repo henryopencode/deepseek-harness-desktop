@@ -10,7 +10,7 @@ The managed Web updater owns the lifecycle lock while it switches runtime versio
 
 ## Decision
 
-The manager exposes lock-free start and stop operations for callers that already own its lifecycle lock. The updater imports the start operation directly and awaits it during activation and rollback. Public `start.mjs` and `stop.mjs` continue to acquire the lock before calling those operations, so concurrent user lifecycle commands remain serialized.
+The manager exposes lock-free start and stop operations for callers that already own its lifecycle lock. The updater imports the start operation directly and awaits it during activation and rollback. The Web runtime packager includes the manager under its canonical module name as well as the public `manage.mjs` entry, so the packaged updater can resolve that import. Public `start.mjs` and `stop.mjs` continue to acquire the lock before calling those operations, so concurrent user lifecycle commands remain serialized.
 
 ## Alternatives considered
 
@@ -22,7 +22,7 @@ The manager exposes lock-free start and stop operations for callers that already
 
 ## Consequences
 
-Confirmed updates can restart the managed service while retaining one lock owner for the whole switch. The lock-free operations are internal coordination hooks and are not exposed through the browser RPC surface.
+Confirmed updates can restart the managed service while retaining one lock owner for the whole switch. The packaged updater can import the same internal operation as source builds. The lock-free operations are internal coordination hooks and are not exposed through the browser RPC surface.
 
 ## Testing
 

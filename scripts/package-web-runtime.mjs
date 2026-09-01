@@ -101,6 +101,7 @@ writeFileSync(join(staging, 'install.mjs'), [
 ].join('\n') + '\n')
 
 copyFileSync(join(root, 'scripts/web-runtime-manager.mjs'), join(staging, 'manage.mjs'))
+copyFileSync(join(root, 'scripts/web-runtime-manager.mjs'), join(staging, 'web-runtime-manager.mjs'))
 copyFileSync(join(root, 'scripts/web-runtime-update.mjs'), join(staging, 'update.mjs'))
 copyFileSync(join(root, 'scripts/web-runtime-install.mjs'), join(staging, 'web-runtime-install.mjs'))
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-01-web-runtime-update-lock-reentrancy.md
-2026-09-01-web-runtime-update-lock-reentrancy.md: f978d8a619441a5c61bc6ed8a62af042047053e4
-2026-09-01-web-runtime-update-lock-reentrancy.zh.md: 91c4553e7473fffce712a1d3947ab4d407b7520a
+2026-09-01-web-runtime-update-lock-reentrancy.md: c5598c1282c4474b858af386bc1506d5d5686f35
+2026-09-01-web-runtime-update-lock-reentrancy.zh.md: 11efa5150c65671944223ca1c710d1ee69d195c9
