@@ -99,14 +99,34 @@ describe('runtime update notice', () => {
     expect((screen.getByRole('button', { name: '立即更新' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('shows remote update status without offering a server install action', async () => {
-    const remoteProps = props()
-    delete remoteProps.install
+  it('uses the host capability to hide the install action for a remote deployment', async () => {
+    const remoteProps = props({
+      check: vi.fn().mockResolvedValue({
+        currentVersion: '0.1.0-rc.8',
+        latestVersion: '0.1.0-rc.9',
+        updateAvailable: true,
+        installAvailable: false,
+      }),
+    })
     render(<RuntimeUpdateNotice {...remoteProps} />)
     expect(await screen.findByRole('dialog', { name: '发现新版本' })).not.toBeNull()
     expect(screen.getByRole('status').textContent).toBe('远程部署请通过 SSH 更新服务器。')
     expect(screen.queryByRole('button', { name: '立即更新' })).toBeNull()
     expect(screen.getByRole('button', { name: '稍后' })).not.toBeNull()
+  })
+
+  it('offers the install action when the remote host explicitly enables it', async () => {
+    const remoteProps = props({
+      check: vi.fn().mockResolvedValue({
+        currentVersion: '0.1.0-rc.8',
+        latestVersion: '0.1.0-rc.9',
+        updateAvailable: true,
+        installAvailable: true,
+      }),
+    })
+    render(<RuntimeUpdateNotice {...remoteProps} />)
+    expect(await screen.findByRole('button', { name: '立即更新' })).not.toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })
 

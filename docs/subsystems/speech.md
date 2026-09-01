@@ -102,5 +102,5 @@ Local Whisper Remote; one process-wide model operation runs at a time.
 @Remote('transcribe') async transcribe(request: SpeechTranscriptionRequest): Promise<SpeechTranscriptionResult>
 ```
 
-Source: [`packages/speech/speech-to-text-local/src/index.ts:168`](../../packages/speech/speech-to-text-local/src/index.ts)
+Source: [`packages/speech/speech-to-text-local/src/index.ts:167`](../../packages/speech/speech-to-text-local/src/index.ts)
 <!-- END GENERATED cordis-surface -->

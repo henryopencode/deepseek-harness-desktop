@@ -74,9 +74,10 @@ function fakeResponse(): { response: ServerResponse; state: { status?: number; b
   return { response, state }
 }
 
-async function mounted(config?: { trustedHosts?: string[] }): Promise<{
+async function mounted(config?: { trustedHosts?: string[]; allowRemoteUpdate?: boolean }): Promise<{
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
+  connection: HostConnectionHandle
   dispose: () => Promise<void>
 }> {
   const ctx = new Context()
@@ -86,7 +87,12 @@ async function mounted(config?: { trustedHosts?: string[] }): Promise<{
   ctx.provide('apiProxy', {} as unknown as ApiProxy)
   const fiber = ctx.plugin({ inject: [...inject], apply }, config)
   await fiber.await()
-  return { routes, upgrades, dispose: () => fiber.dispose() }
+  return {
+    routes,
+    upgrades,
+    connection: ctx.get('connection') as HostConnectionHandle,
+    dispose: () => fiber.dispose(),
+  }
 }
 
 describe('connection node half', () => {
@@ -186,6 +192,42 @@ describe('connection node half', () => {
     const read = fakeResponse()
     await routes[0]!.handler(fakeRequest({ host: 'harness.example' }), read.response)
     expect(read.state.status).not.toBe(403)
+    await dispose()
+  })
+
+  it('allows only the declared trusted authority to start a remote update when enabled', async () => {
+    const { routes, connection, dispose } = await mounted({
+      trustedHosts: ['harness.example'],
+      allowRemoteUpdate: true,
+    })
+    const remove = connection.rpc.intercept(
+      '/api',
+      endpoint => endpoint === 'host.updateInstall',
+      async () => ({ ok: true, value: { accepted: true as const } }),
+      { authority: 'trusted-host' },
+    )
+    const request: ClientRequest = {
+      type: 'client-request',
+      rpcId: RpcId('rpc-remote-update'),
+      method: 'host.updateInstall',
+      payload: { args: {} },
+    }
+    const allowed = fakeResponse()
+    await routes[0]!.handler(fakePost({
+      host: 'harness.example',
+      origin: 'http://harness.example',
+      'sec-fetch-site': 'same-origin',
+    }, `${API_PATH}/host.updateInstall`, request), allowed.response)
+    expect(allowed.state.status).toBe(200)
+    expect(JSON.parse(String(allowed.state.body))).toMatchObject({
+      rpcId: 'rpc-remote-update',
+      result: { ok: true, value: { accepted: true } },
+    })
+
+    const untrusted = fakeResponse()
+    await routes[0]!.handler(fakePost({ host: 'other.example' }, `${API_PATH}/host.updateInstall`, request), untrusted.response)
+    expect(untrusted.state).toMatchObject({ status: 403, body: 'forbidden' })
+    await remove()
     await dispose()
   })
 

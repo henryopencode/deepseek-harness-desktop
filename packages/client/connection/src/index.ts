@@ -46,7 +46,7 @@ function assertImageBodyCapacity(ctx: Context, maxRequestBodyBytes: number): voi
 /** Services required before providing Connection; API Proxy is an optional `/api` fallback. */
 export const inject = ['webServer']
 
-/** Plugin config: the deployment's non-loopback serving authorities. */
+/** Plugin config: the deployment's non-loopback serving authorities and update policy. */
 export interface ConnectionConfig {
   /**
    * Authorities this deployment serves beyond loopback: exact `host:port`, or
@@ -59,11 +59,14 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Maximum buffered JSON body for every `/api` request. */
   maxRequestBodyBytes?: number
+  /** Permit the managed runtime installer from declared non-loopback authorities. Defaults to false. */
+  allowRemoteUpdate?: boolean
 }
 
 export const Config: z<ConnectionConfig> = z.object({
   trustedHosts: z.array(String).default([]),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
+  allowRemoteUpdate: z.boolean().default(false),
 })
 
 /**
@@ -103,7 +106,8 @@ const PRIVILEGED_METHODS = new Set([
  * the prefix passes the browser-trust fence first (DNS-rebinding and
  * cross-site defense — [api-request-trust](./api-request-trust.ts));
  * privileged methods additionally pass it with an empty trust list, which
- * pins them to loopback.
+ * pins them to loopback, except `host.updateInstall` when
+ * `allowRemoteUpdate` is explicitly enabled.
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */
@@ -111,6 +115,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
   // The Loader resolves schema defaults; hand-built test contexts may pass none.
   const trustedHosts = config?.trustedHosts ?? []
   const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
+  const allowRemoteUpdate = config?.allowRemoteUpdate ?? false
   // Config boundary: a malformed entry fails the load loudly here rather than
   // silently authorizing its hostname prefix at request time.
   for (const entry of trustedHosts) assertTrustedAuthority(entry)
@@ -122,9 +127,16 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
       const method = pathname.startsWith(`${API_PATH}/`)
         ? pathname.slice(API_PATH.length + 1)
         : undefined
+      const remoteUpdate = method === 'host.updateInstall' && allowRemoteUpdate
       if (method !== undefined
         && PRIVILEGED_METHODS.has(method)
+        && !remoteUpdate
         && !isTrustedApiRequest(request, [])) {
+        return new Response('forbidden', { status: 403 })
+      }
+      if (method === 'host.updateInstall'
+        && remoteUpdate
+        && !isTrustedApiRequest(request, trustedHosts)) {
         return new Response('forbidden', { status: 403 })
       }
       if (request.method === 'GET' && (pathname === MUX_EVENTS_PATH || pathname === HOST_EVENTS_PATH)) {

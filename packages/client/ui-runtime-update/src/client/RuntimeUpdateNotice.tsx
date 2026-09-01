@@ -9,6 +9,8 @@ export interface RuntimeUpdateInfo {
   currentVersion: string
   latestVersion: string
   updateAvailable: boolean
+  /** Host capability allowing this page to start the managed installer. */
+  installAvailable?: boolean
   releaseUrl?: string
 }
 
@@ -18,7 +20,7 @@ export const RUNTIME_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000
 /** Browser callbacks supplied by the plugin closure. */
 export interface RuntimeUpdateInjected {
   check: () => Promise<RuntimeUpdateInfo>
-  /** Install locally managed runtimes; remote deployments expose check-only status. */
+  /** Start the managed runtime installer; availability is carried by the check result. */
   install?: () => Promise<void>
   readVersion: () => Promise<string>
   /** Optional page reload hook, injectable for non-browser tests. */
@@ -137,6 +139,7 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
   }, [busy, info, install, readVersion, t])
 
   if (info === null || !open) return null
+  const canInstall = info.installAvailable ?? install !== undefined
 
   return (
     <Modal
@@ -149,7 +152,7 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
       footer={(
         <>
           <Button variant="outline" onClick={close} disabled={busy}>{t('later')}</Button>
-          {install !== undefined && (
+          {install !== undefined && canInstall && (
             <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
               {busy ? t('installing') : t('install')}
             </Button>
@@ -158,7 +161,7 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
       )}
     >
       <div className={css.body}>
-        {install === undefined && <p className={css.status} role="status">{t('remote')}</p>}
+        {!canInstall && <p className={css.status} role="status">{t('remote')}</p>}
         {busy && <p className={css.status} role="status">{t('waiting')}</p>}
         {error !== null && <p className={css.error} role="alert">{error}</p>}
       </div>

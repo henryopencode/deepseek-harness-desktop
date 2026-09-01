@@ -6,6 +6,9 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -163,6 +166,16 @@ const AdapterConfig = z.object({
   baseURL: z.string(),
 })
 
+function writeUpdateCheckScript(value: {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+}): string {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-update-check-'))
+  writeFileSync(join(root, 'update.mjs'), `process.stdout.write(${JSON.stringify(JSON.stringify(value))})`)
+  return root
+}
+
 async function harness(options?: {
   settings?: false | {
     doc?: Record<string, unknown>
@@ -233,6 +246,39 @@ function forwardedSettings(ns: string): HostFrame {
     args: [ns, expect.any(Number)], // oxlint-disable-line typescript/no-unsafe-assignment
   }
 }
+
+describe('runtime update domain', () => {
+  it('advertises remote installation only when the deployment enables it', async () => {
+    const root = writeUpdateCheckScript({
+      currentVersion: '0.1.0-rc.8',
+      latestVersion: '0.1.0-rc.9',
+      updateAvailable: true,
+    })
+    try {
+      const disabled = createApiProxy(await harness(), { ...DEFAULTS, webRuntimeRoot: root })
+      expect(expectOk(await disabled.host.updateCheck(request({})))).toMatchObject({
+        currentVersion: '0.1.0-rc.8',
+        latestVersion: '0.1.0-rc.9',
+        updateAvailable: true,
+        installAvailable: false,
+      })
+
+      const enabled = createApiProxy(await harness(), {
+        ...DEFAULTS,
+        webRuntimeRoot: root,
+        allowRemoteUpdate: true,
+      })
+      expect(expectOk(await enabled.host.updateCheck(request({})))).toMatchObject({
+        currentVersion: '0.1.0-rc.8',
+        latestVersion: '0.1.0-rc.9',
+        updateAvailable: true,
+        installAvailable: true,
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('settings domain', () => {
   it('reports an actionable error when no settings provider is mounted', async () => {

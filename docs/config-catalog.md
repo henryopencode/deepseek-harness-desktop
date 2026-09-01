@@ -396,7 +396,7 @@ Source: [`packages/shell/bash-sandbox/src/index.ts:35`](../packages/shell/bash-s
 Requires: `webServer`
 
 ```ts config-catalog
-/** Plugin config: the deployment's non-loopback serving authorities. */
+/** Plugin config: the deployment's non-loopback serving authorities and update policy. */
 export interface ConnectionConfig {
   /**
    * Authorities this deployment serves beyond loopback: exact `host:port`, or
@@ -409,6 +409,8 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Maximum buffered JSON body for every `/api` request. */
   maxRequestBodyBytes?: number
+  /** Permit the managed runtime installer from declared non-loopback authorities. Defaults to false. */
+  allowRemoteUpdate?: boolean
 }
 ```
 
@@ -814,6 +816,10 @@ export interface Config {
    * @default 1024
    */
   coldBlankProbeMaxBytes?: number
+  /** Managed Web runtime root used by the browser's update controls. */
+  webRuntimeRoot?: string
+  /** Permit the managed runtime installer from non-loopback clients. Defaults to false. */
+  allowRemoteUpdate?: boolean
 }
 ```
 
@@ -863,7 +869,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/host/webserver/src/index.ts:45`](../packages/host/webserver/src/index.ts)
+Source: [`packages/host/webserver/src/index.ts:46`](../packages/host/webserver/src/index.ts)
 
 <a id="deepseek-aidsh-invariants"></a>
 
@@ -2036,7 +2042,7 @@ export interface Config {
 export type SpeechToTextModelPreference = 'auto' | 'base' | 'small'
 ```
 
-Source: [`packages/speech/speech-to-text-local/src/index.ts:30`](../packages/speech/speech-to-text-local/src/index.ts)
+Source: [`packages/speech/speech-to-text-local/src/index.ts:29`](../packages/speech/speech-to-text-local/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -3242,6 +3248,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-plan` ([`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-reference` ([`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-renderer` ([`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-runtime-update` ([`packages/client/ui-runtime-update/src/index.ts`](../packages/client/ui-runtime-update/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings` ([`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-general` ([`packages/client/ui-settings-general/src/index.ts`](../packages/client/ui-settings-general/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-models` ([`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts))

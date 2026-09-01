@@ -38,14 +38,18 @@ export function apply(ctx: ClientContext): void {
   const injected = (): RuntimeUpdateInjected => ({
     check: async (): Promise<RuntimeUpdateInfo> => {
       const response = await connection.api.host.updateCheck({})
-      return valueFrom(response.result)
+      const info = valueFrom(response.result)
+      return {
+        ...info,
+        // Loopback is always allowed by the node-half fence. Remote installs
+        // are advertised by the host only when its deployment switch is on.
+        installAvailable: connection.isLoopback || info.installAvailable === true,
+      }
     },
-    ...connection.isLoopback ? {
-      install: async (): Promise<void> => {
-        const response = await connection.api.host.updateInstall({})
-        valueFrom(response.result)
-      },
-    } : {},
+    install: async (): Promise<void> => {
+      const response = await connection.api.host.updateInstall({})
+      valueFrom(response.result)
+    },
     readVersion: async (): Promise<string> => {
       const response = await connection.api.host.describe({})
       return valueFrom(response.result).version

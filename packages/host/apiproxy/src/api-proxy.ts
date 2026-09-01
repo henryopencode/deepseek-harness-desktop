@@ -651,6 +651,8 @@ export interface ApiProxyDefaults {
   canOpenPath?: () => boolean
   /** Managed Web runtime root; update RPCs are unavailable when absent. */
   webRuntimeRoot?: string
+  /** Permit the managed runtime installer from non-loopback clients. Defaults to false. */
+  allowRemoteUpdate?: boolean
 }
 
 /** The tool/call payload fields the presenter path reads. */
@@ -3070,7 +3072,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           return err(request, { code: 'internal', message: 'remote updates are unavailable in this deployment', details: {} })
         }
         try {
-          return ok(request, await runWebUpdateCheck(script))
+          return ok(request, {
+            ...await runWebUpdateCheck(script),
+            installAvailable: defaults.allowRemoteUpdate === true,
+          })
         } catch (error: unknown) {
           return err(request, {
             code: 'internal',

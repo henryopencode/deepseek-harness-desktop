@@ -117,6 +117,8 @@ export interface HostApi {
     currentVersion: string
     latestVersion: string
     updateAvailable: boolean
+    /** Whether a non-loopback client may invoke `host.updateInstall`. */
+    installAvailable?: boolean
     releaseUrl?: string
   }>>
 

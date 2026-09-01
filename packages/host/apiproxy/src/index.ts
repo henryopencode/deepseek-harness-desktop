@@ -61,6 +61,8 @@ export interface Config {
   coldBlankProbeMaxBytes?: number
   /** Managed Web runtime root used by the browser's update controls. */
   webRuntimeRoot?: string
+  /** Permit the managed runtime installer from non-loopback clients. Defaults to false. */
+  allowRemoteUpdate?: boolean
 }
 
 /**
@@ -80,6 +82,7 @@ export class ApiProxyService extends Service implements ApiProxy {
       .default(DEFAULT_SESSION_LOG_COMPRESSION_LEVEL) as z<SessionLogCompressionLevel>,
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     webRuntimeRoot: z.string(),
+    allowRemoteUpdate: z.boolean().default(false),
   })
 
   readonly sessions: ApiProxy['sessions']
@@ -103,6 +106,7 @@ export class ApiProxyService extends Service implements ApiProxy {
       saveDefaultModelSelection: selection => ctx.agentDefaultModel.saveSelection(selection),
       cwd: process.cwd(),
       ...config.webRuntimeRoot === undefined ? {} : { webRuntimeRoot: config.webRuntimeRoot },
+      allowRemoteUpdate: config.allowRemoteUpdate ?? false,
       ...config.nativeOpen === undefined ? {} : { canOpenPath: () => config.nativeOpen as boolean },
       ...(config.sessionExportCompressionLevel === undefined
         ? {}

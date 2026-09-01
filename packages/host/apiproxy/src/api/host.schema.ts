@@ -97,6 +97,7 @@ export const hostUpdateCheckValueSchema = z.object({
   currentVersion: z.string(),
   latestVersion: z.string(),
   updateAvailable: z.boolean(),
+  installAvailable: z.boolean().optional(),
   releaseUrl: z.string().optional(),
 }) satisfies z.ZodType<Wire<ResponseValue<'host.updateCheck'>>>
 
