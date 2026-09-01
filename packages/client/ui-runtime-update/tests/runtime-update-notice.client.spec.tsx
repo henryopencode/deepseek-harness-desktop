@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { RUNTIME_UPDATE_CHECK_INTERVAL_MS, RuntimeUpdateNotice, waitForVersion, type RuntimeUpdateNoticeProps } from '../src/client/RuntimeUpdateNotice.tsx'
+import { RUNTIME_UPDATE_CHECK_INTERVAL_MS, RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS, RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS, RuntimeUpdateNotice, waitForVersion, type RuntimeUpdateNoticeProps } from '../src/client/RuntimeUpdateNotice.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => {
@@ -96,7 +96,7 @@ describe('runtime update notice', () => {
     render(<RuntimeUpdateNotice {...props({ install })} />)
     fireEvent.click(await screen.findByRole('button', { name: '立即更新' }))
     expect((await screen.findByRole('alert')).textContent).toBe('更新失败：不可用')
-    expect((screen.getByRole('button', { name: '立即更新' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.getByRole('button', { name: '立即更新' }).disabled).toBe(false)
   })
 
   it('uses the host capability to hide the install action for a remote deployment', async () => {
@@ -131,6 +131,14 @@ describe('runtime update notice', () => {
 })
 
 describe('waitForVersion', () => {
+  it('keeps the default wait long enough for a first install', async () => {
+    const read = vi.fn().mockImplementation(async () => read.mock.calls.length >= 32 ? 'new' : 'old')
+    await expect(waitForVersion(read, 'new', { sleep: async () => {} })).resolves.toBe(true)
+    expect(read).toHaveBeenCalledTimes(32)
+    expect(RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS).toBeGreaterThanOrEqual(5 * 60 * 1000)
+    expect(RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS).toBeGreaterThanOrEqual(300)
+  })
+
   it('retries through restart failures until the target responds', async () => {
     const read = vi.fn()
       .mockRejectedValueOnce(new Error('offline'))

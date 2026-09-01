@@ -7,10 +7,10 @@ export const zh = {
   later: '稍后',
   install: '立即更新',
   installing: '正在更新…',
-  waiting: '更新已启动，正在等待服务重启…',
+  waiting: '正在下载并安装更新；首次更新可能需要数分钟，完成后服务会自动重启。',
   remote: '远程部署请通过 SSH 更新服务器。',
   error: '更新失败：{message}',
-  timeout: '服务重启超时，请稍后刷新页面。',
+  timeout: '更新仍可能在后台进行；请稍后刷新页面检查版本。',
   close: '关闭更新提示',
 } satisfies Record<string, string>
 
@@ -24,9 +24,9 @@ export const en = {
   later: 'Later',
   install: 'Update now',
   installing: 'Updating…',
-  waiting: 'Update started. Waiting for the service to restart…',
+  waiting: 'Downloading and installing the update. A first update may take several minutes; the service restarts automatically when it finishes.',
   remote: 'Use SSH to update the remote deployment.',
   error: 'Update failed: {message}',
-  timeout: 'The service did not restart in time. Refresh the page later.',
+  timeout: 'The update may still be running in the background. Refresh the page later to check the version.',
   close: 'Close update notice',
 } satisfies Record<RuntimeUpdateKey, string>

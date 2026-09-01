@@ -84,7 +84,10 @@ function releaseRepository() {
   throw new Error('Set DSH_UPDATE_REPOSITORY=owner/repository when packaging the Web runtime')
 }
 
-writeFileSync(join(staging, 'update-config.json'), JSON.stringify({ repository: releaseRepository() }, null, 2) + '\n')
+writeFileSync(join(staging, 'update-config.json'), JSON.stringify({
+  repository: releaseRepository(),
+  networkTimeoutMs: 5 * 60 * 1000,
+}, null, 2) + '\n')
 
 writeFileSync(join(staging, 'install.mjs'), [
   "import { existsSync, readFileSync } from 'node:fs'",

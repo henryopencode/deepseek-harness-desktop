@@ -13,6 +13,8 @@ const versionsRoot = join(runtimeRoot, 'versions')
 const currentPath = join(runtimeRoot, 'current.json')
 const configPath = join(runtimeRoot, 'update-config.json')
 const lockPath = join(stateRoot, '.operation.lock')
+const DEFAULT_UPDATE_NETWORK_TIMEOUT_MS = 5 * 60 * 1000
+const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
@@ -80,23 +82,53 @@ function updateApiBase() {
   return (process.env.DSH_UPDATE_API_BASE_URL ?? 'https://api.github.com').replace(/\/$/u, '')
 }
 
+function updateNetworkTimeout(value, source) {
+  const timeoutMs = typeof value === 'number' ? value : Number(value)
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new Error(source + ' must be an integer from 1000 through ' + String(MAX_TIMER_DELAY_MS))
+  }
+  return timeoutMs
+}
+
 function releaseConfig() {
   const config = readJson(configPath)
   if (typeof config.repository !== 'string' || !/^[^/]+\/[^/]+$/.test(config.repository)) {
     throw new Error('update-config.json has no valid repository')
   }
+  const timeoutOverride = process.env.DSH_UPDATE_NETWORK_TIMEOUT_MS
+  const networkTimeoutMs = timeoutOverride === undefined
+    ? updateNetworkTimeout(config.networkTimeoutMs ?? DEFAULT_UPDATE_NETWORK_TIMEOUT_MS, 'update-config.json networkTimeoutMs')
+    : updateNetworkTimeout(timeoutOverride, 'DSH_UPDATE_NETWORK_TIMEOUT_MS')
   return {
     repository: config.repository,
     apiBaseUrl: typeof config.apiBaseUrl === 'string' ? config.apiBaseUrl.replace(/\/$/u, '') : updateApiBase(),
+    networkTimeoutMs,
   }
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'deepseek-harness-web-runtime' },
-  })
-  if (!response.ok) throw new Error('update server returned HTTP ' + response.status)
-  return response.json()
+async function fetchBody(url, options, timeoutMs, operation, consume) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), updateNetworkTimeout(timeoutMs, 'update network timeout'))
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal })
+    if (!response.ok) throw new Error('update server returned HTTP ' + response.status)
+    return await consume(response)
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(operation + ' timed out after ' + String(timeoutMs) + 'ms')
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function fetchJson(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS) {
+  return fetchBody(
+    url,
+    { headers: { accept: 'application/vnd.github+json', 'user-agent': 'deepseek-harness-web-runtime' } },
+    timeoutMs,
+    'update metadata request',
+    response => response.json(),
+  )
 }
 
 export function releaseVersion(tag) {
@@ -106,7 +138,7 @@ export function releaseVersion(tag) {
 export async function checkForUpdate() {
   const config = releaseConfig()
   const current = activeVersion()
-  const releases = await fetchJson(config.apiBaseUrl + '/repos/' + config.repository + '/releases?per_page=30')
+  const releases = await fetchJson(config.apiBaseUrl + '/repos/' + config.repository + '/releases?per_page=30', config.networkTimeoutMs)
   if (!Array.isArray(releases)) throw new Error('update server returned an invalid release list')
   const candidates = releases
     .map(release => ({ release, version: releaseVersion(release?.tag_name) }))
@@ -134,10 +166,14 @@ export async function checkForUpdate() {
   }
 }
 
-async function downloadBytes(url) {
-  const response = await fetch(url, { headers: { 'user-agent': 'deepseek-harness-web-runtime' } })
-  if (!response.ok) throw new Error('download returned HTTP ' + response.status)
-  return Buffer.from(await response.arrayBuffer())
+export async function downloadBytes(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS) {
+  return fetchBody(
+    url,
+    { headers: { 'user-agent': 'deepseek-harness-web-runtime' } },
+    timeoutMs,
+    'update download',
+    async response => Buffer.from(await response.arrayBuffer()),
+  )
 }
 
 export function expectedChecksum(text, filename) {
@@ -216,8 +252,9 @@ function isInstalledVersion(root) {
 async function applyUpdate(info, restart) {
   if (!info.archiveUrl || !info.checksumUrl) throw new Error('update metadata has no verified download URLs')
   const archiveName = 'deepseek-harness-web-v' + info.latestVersion + '.tar.gz'
-  const archiveBytes = await downloadBytes(info.archiveUrl)
-  const checksumText = (await downloadBytes(info.checksumUrl)).toString('utf8')
+  const { networkTimeoutMs } = releaseConfig()
+  const archiveBytes = await downloadBytes(info.archiveUrl, networkTimeoutMs)
+  const checksumText = (await downloadBytes(info.checksumUrl, networkTimeoutMs)).toString('utf8')
   const expected = expectedChecksum(checksumText, archiveName)
   const actual = createHash('sha256').update(archiveBytes).digest('hex')
   if (actual !== expected) throw new Error('SHA-256 verification failed for the downloaded Web archive')

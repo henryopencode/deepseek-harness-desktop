@@ -17,6 +17,17 @@ export interface RuntimeUpdateInfo {
 /** Delay between release-feed checks while a page stays open. */
 export const RUNTIME_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000
 
+/** Maximum browser wait for download, installation, and service restart. */
+export const RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS = 10 * 60 * 1000
+
+/** Polling interval while a managed runtime update is being installed. */
+export const RUNTIME_UPDATE_INSTALL_WAIT_INTERVAL_MS = 1_000
+
+/** Number of version polls covered by the bounded installation wait. */
+export const RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS = Math.ceil(
+  RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS / RUNTIME_UPDATE_INSTALL_WAIT_INTERVAL_MS,
+)
+
 /** Browser callbacks supplied by the plugin closure. */
 export interface RuntimeUpdateInjected {
   check: () => Promise<RuntimeUpdateInfo>
@@ -40,7 +51,7 @@ export interface WaitForVersionOptions {
 }
 
 /**
- * Wait until the restarted Host reports the requested version.
+ * Wait until the installed runtime reports the requested version after its restart.
  * @param readVersion - callback reading the current Host version.
  * @param targetVersion - version expected after installation.
  * @param options - bounded polling controls.
@@ -51,8 +62,8 @@ export async function waitForVersion(
   targetVersion: string,
   options: WaitForVersionOptions = {},
 ): Promise<boolean> {
-  const attempts = options.attempts ?? 30
-  const delayMs = options.delayMs ?? 500
+  const attempts = options.attempts ?? RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS
+  const delayMs = options.delayMs ?? RUNTIME_UPDATE_INSTALL_WAIT_INTERVAL_MS
   const sleep = options.sleep ?? ((delay: number) => new Promise<void>((resolve) => { setTimeout(resolve, delay) }))
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -127,7 +138,13 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
       await install()
       if (alive.current) setError(null)
       const updated = await waitForVersion(readVersion, info.latestVersion)
-      if (!updated) throw new Error(t('timeout'))
+      if (!updated) {
+        if (alive.current) {
+          setBusy(false)
+          setError(t('timeout'))
+        }
+        return
+      }
       if (reload !== undefined) reload()
       else if (typeof window !== 'undefined') window.location.reload()
     } catch (reason) {
@@ -136,7 +153,7 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
         setError(t('error', { message: messageOf(reason) }))
       }
     }
-  }, [busy, info, install, readVersion, t])
+  }, [busy, info, install, readVersion, reload, t])
 
   if (info === null || !open) return null
   const canInstall = info.installAvailable ?? install !== undefined
