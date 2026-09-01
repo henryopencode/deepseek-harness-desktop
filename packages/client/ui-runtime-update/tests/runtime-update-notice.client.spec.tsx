@@ -96,7 +96,7 @@ describe('runtime update notice', () => {
     render(<RuntimeUpdateNotice {...props({ install })} />)
     fireEvent.click(await screen.findByRole('button', { name: '立即更新' }))
     expect((await screen.findByRole('alert')).textContent).toBe('更新失败：不可用')
-    expect(screen.getByRole('button', { name: '立即更新' }).disabled).toBe(false)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '立即更新' }).disabled).toBe(false)
   })
 
   it('uses the host capability to hide the install action for a remote deployment', async () => {
