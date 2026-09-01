@@ -167,6 +167,16 @@ async function stopUnlocked() {
   return 0
 }
 
+/** Start the service while an enclosing lifecycle operation already owns the lock. */
+export async function startUnlockedForUpdate(extraArgs = []) {
+  return startUnlocked(extraArgs)
+}
+
+/** Stop the service while an enclosing lifecycle operation already owns the lock. */
+export async function stopUnlockedForUpdate() {
+  return stopUnlocked()
+}
+
 function status() {
   const pid = currentPid()
   if (pid === undefined) {

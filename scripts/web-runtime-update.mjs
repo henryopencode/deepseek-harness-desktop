@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { installRuntimeDependencies, isRuntimeInstalled } from './web-runtime-install.mjs'
+import { startUnlockedForUpdate } from './web-runtime-manager.mjs'
 
 const runtimeRoot = resolve(process.env.DSH_WEB_RUNTIME_ROOT ?? dirname(fileURLToPath(import.meta.url)))
 const stateRoot = join(runtimeRoot, '.dsh-runtime')
@@ -199,13 +200,8 @@ function writeCurrent(version) {
   renameSync(temporary, currentPath)
 }
 
-function startService(args) {
-  const started = spawnSync(process.execPath, [join(runtimeRoot, 'start.mjs'), ...args], {
-    cwd: runtimeRoot,
-    stdio: 'inherit',
-    env: { ...process.env, DSH_WEB_RUNTIME_ROOT: runtimeRoot },
-  })
-  return started.status === 0
+async function startService(args) {
+  return (await startUnlockedForUpdate(args)) === 0
 }
 
 /**
@@ -257,9 +253,9 @@ async function applyUpdate(info, restart) {
     const args = savedStartArgs()
     if (wasRunning) await stopProcess(pid)
     writeCurrent(info.latestVersion)
-    if (wasRunning && restart && !startService(args)) {
+    if (wasRunning && restart && !(await startService(args))) {
       writeCurrent(previous)
-      if (!startService(args)) throw new Error('new Web runtime failed to start; the previous version was restored but could not be restarted')
+      if (!(await startService(args))) throw new Error('new Web runtime failed to start; the previous version was restored but could not be restarted')
       throw new Error('new Web runtime failed to start; the previous version was restored')
     }
     console.log('DeepSeek Harness Web updated from ' + info.currentVersion + ' to ' + info.latestVersion)
