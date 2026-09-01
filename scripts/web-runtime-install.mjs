@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const DSH_BIN_PATH = ['node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js']
 const WHISPER_CPP_PATH = ['node_modules', 'nodejs-whisper', 'cpp', 'whisper.cpp']
@@ -54,9 +54,22 @@ export function ensureWhisperCli(runtimeRoot) {
  * Install JavaScript dependencies and their required local Whisper executable.
  * @param {string} runtimeRoot - Installed version directory.
  */
+export function resolveNpmInvocation(nodePath = process.execPath, platform = process.platform) {
+  const nodeDirectory = dirname(nodePath)
+  const candidates = platform === 'win32'
+    ? [join(nodeDirectory, 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+    : [
+        join(nodeDirectory, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        join(nodeDirectory, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+      ]
+  const npmCli = candidates.find(existsSync)
+  if (npmCli !== undefined) return { command: nodePath, args: [npmCli] }
+  return { command: platform === 'win32' ? 'npm.cmd' : 'npm', args: [] }
+}
+
 export function installRuntimeDependencies(runtimeRoot) {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const result = spawnSync(npm, ['install', '--no-audit', '--no-fund', '--omit=dev'], { cwd: runtimeRoot, stdio: 'inherit' })
+  const npm = resolveNpmInvocation()
+  const result = spawnSync(npm.command, [...npm.args, 'install', '--no-audit', '--no-fund', '--omit=dev'], { cwd: runtimeRoot, stdio: 'inherit' })
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error('Could not install runtime dependencies.')
   if (!existsSync(join(runtimeRoot, ...DSH_BIN_PATH))) throw new Error('Runtime dependency installation did not provide the dsh executable.')

@@ -1,10 +1,11 @@
 /** Restore the executable bit stripped from node-pty's prebuilt helper. */
 
 import { chmodSync, existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const entry = fileURLToPath(import.meta.resolve('node-pty'))
+const entry = createRequire(import.meta.url).resolve('node-pty')
 const packageRoot = dirname(dirname(entry))
 const candidates = [
   join(packageRoot, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper'),
