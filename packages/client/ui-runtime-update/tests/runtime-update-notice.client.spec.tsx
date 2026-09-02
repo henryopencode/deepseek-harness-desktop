@@ -91,6 +91,19 @@ describe('runtime update notice', () => {
     expect(reload).toHaveBeenCalledOnce()
   })
 
+  it('restores an active installation after a page refresh without starting another one', async () => {
+    const install = vi.fn().mockResolvedValue(undefined)
+    const status = vi.fn().mockResolvedValue({
+      phase: 'installing' as const, progress: 68, currentVersion: '0.1.0-rc.8', targetVersion: '0.1.0-rc.9',
+    })
+    const reload = vi.fn()
+    render(<RuntimeUpdateNotice {...props({ install, status, reload })} />)
+    expect(await screen.findByText('安装依赖')).not.toBeNull()
+    await waitFor(() => { expect(reload).toHaveBeenCalledOnce() })
+    expect(install).not.toHaveBeenCalled()
+    expect(status).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps an install failure visible for retry', async () => {
     const install = vi.fn().mockRejectedValue(new Error('不可用'))
     render(<RuntimeUpdateNotice {...props({ install })} />)

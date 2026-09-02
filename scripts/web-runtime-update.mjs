@@ -16,6 +16,13 @@ const lockPath = join(stateRoot, '.operation.lock')
 const progressPath = join(stateRoot, 'update-progress.json')
 const DEFAULT_UPDATE_NETWORK_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_TIMER_DELAY_MS = 2_147_483_647
+
+class LifecycleOperationBusyError extends Error {
+  constructor() {
+    super('DeepSeek Harness Web is busy with another lifecycle operation')
+  }
+}
+
 const STABLE_RUNTIME_FILES = [
   'install.mjs', 'manage.mjs', 'run.mjs', 'start.mjs', 'status.mjs', 'stop.mjs',
   'update.mjs', 'update-config.json', 'web-runtime-install.mjs', 'web-runtime-manager.mjs',
@@ -59,7 +66,7 @@ async function withLock(operation) {
   try {
     fd = openSync(lockPath, 'wx')
   } catch (error) {
-    if (error?.code === 'EEXIST') throw new Error('DeepSeek Harness Web is busy with another lifecycle operation')
+    if (error?.code === 'EEXIST') throw new LifecycleOperationBusyError()
     throw error
   }
   try {
@@ -403,25 +410,34 @@ export async function runUpdate(argv = process.argv.slice(2)) {
   const restart = !argv.includes('--no-restart')
   let info
   try {
-    if (!checkOnly) writeProgress({ phase: 'checking', progress: 0, currentVersion: currentVersionOrUndefined() })
-    info = await checkForUpdate()
-    if (json) console.log(JSON.stringify(info))
-    else if (!info.updateAvailable) console.log('DeepSeek Harness Web is up to date (' + info.currentVersion + ').')
-    else console.log('DeepSeek Harness Web update available: ' + info.currentVersion + ' -> ' + info.latestVersion)
-    if (checkOnly || !info.updateAvailable) {
-      if (!checkOnly) writeProgress({ phase: 'idle', progress: 0, currentVersion: info.currentVersion })
+    if (checkOnly) {
+      info = await checkForUpdate()
+      if (json) console.log(JSON.stringify(info))
+      else if (!info.updateAvailable) console.log('DeepSeek Harness Web is up to date (' + info.currentVersion + ').')
+      else console.log('DeepSeek Harness Web update available: ' + info.currentVersion + ' -> ' + info.latestVersion)
       return info
     }
-    const confirmed = yes || await promptConfirmation(info.latestVersion)
-    if (!confirmed) {
-      if (!json) console.log('Update cancelled.')
-      writeProgress({ phase: 'idle', progress: 0, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+    return await withLock(async () => {
+      writeProgress({ phase: 'checking', progress: 0, currentVersion: currentVersionOrUndefined() })
+      info = await checkForUpdate()
+      if (json) console.log(JSON.stringify(info))
+      else if (!info.updateAvailable) console.log('DeepSeek Harness Web is up to date (' + info.currentVersion + ').')
+      else console.log('DeepSeek Harness Web update available: ' + info.currentVersion + ' -> ' + info.latestVersion)
+      if (!info.updateAvailable) {
+        writeProgress({ phase: 'idle', progress: 0, currentVersion: info.currentVersion })
+        return info
+      }
+      const confirmed = yes || await promptConfirmation(info.latestVersion)
+      if (!confirmed) {
+        if (!json) console.log('Update cancelled.')
+        writeProgress({ phase: 'idle', progress: 0, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+        return info
+      }
+      await applyUpdate(info, restart)
       return info
-    }
-    await withLock(() => applyUpdate(info, restart))
-    return info
+    })
   } catch (error) {
-    if (!checkOnly) {
+    if (!checkOnly && !(error instanceof LifecycleOperationBusyError)) {
       writeProgress({
         phase: 'failed', progress: 0, currentVersion: info?.currentVersion ?? currentVersionOrUndefined(),
         ...(info?.latestVersion === undefined ? {} : { targetVersion: info.latestVersion }),

@@ -154,6 +154,13 @@ const PHASE_LABEL_KEYS: Record<RuntimeUpdatePhase, RuntimeUpdateKey> = {
   failed: 'phaseFailed',
 }
 
+function isActiveUpdate(status: RuntimeUpdateStatus, targetVersion: string): boolean {
+  return status.phase !== 'idle'
+    && status.phase !== 'completed'
+    && status.phase !== 'failed'
+    && (status.targetVersion === undefined || status.targetVersion === targetVersion)
+}
+
 function phaseLabel(phase: RuntimeUpdatePhase, t: Translate<RuntimeUpdateKey>): string {
   return t(PHASE_LABEL_KEYS[phase])
 }
@@ -201,6 +208,38 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
       clearInterval(timer)
     }
   }, [check])
+
+  useEffect(() => {
+    if (info === null || status === undefined) return
+    let cancelled = false
+    const resume = async (): Promise<void> => {
+      try {
+        const current = await status()
+        if (cancelled || !isActiveUpdate(current, info.latestVersion)) return
+        setBusy(true)
+        setError(null)
+        setProgress(current)
+        const updated = await waitForUpdate(readVersion, status, info.latestVersion, {
+          onProgress: (next) => { if (!cancelled && alive.current) setProgress(next) },
+        })
+        if (cancelled || !alive.current) return
+        if (!updated) {
+          setBusy(false)
+          setError(t('timeout'))
+          return
+        }
+        if (reload !== undefined) reload()
+        else if (typeof window !== 'undefined') window.location.reload()
+      } catch (reason) {
+        if (!cancelled && alive.current) {
+          setBusy(false)
+          setError(t('error', { message: messageOf(reason) }))
+        }
+      }
+    }
+    void resume()
+    return () => { cancelled = true }
+  }, [info, readVersion, reload, status, t])
 
   const close = useCallback(() => {
     if (!busy) {
