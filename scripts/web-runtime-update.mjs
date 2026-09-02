@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,11 +13,44 @@ const versionsRoot = join(runtimeRoot, 'versions')
 const currentPath = join(runtimeRoot, 'current.json')
 const configPath = join(runtimeRoot, 'update-config.json')
 const lockPath = join(stateRoot, '.operation.lock')
+const progressPath = join(stateRoot, 'update-progress.json')
 const DEFAULT_UPDATE_NETWORK_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_TIMER_DELAY_MS = 2_147_483_647
+const STABLE_RUNTIME_FILES = [
+  'install.mjs', 'manage.mjs', 'run.mjs', 'start.mjs', 'status.mjs', 'stop.mjs',
+  'update.mjs', 'update-config.json', 'web-runtime-install.mjs', 'web-runtime-manager.mjs',
+]
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
+}
+
+function currentVersionOrUndefined() {
+  try {
+    return activeVersion()
+  } catch {
+    return undefined
+  }
+}
+
+/** Persist the current lifecycle phase for the browser status endpoint. */
+function writeProgress(value) {
+  mkdirSync(stateRoot, { recursive: true })
+  const temporary = progressPath + '.tmp-' + process.pid
+  writeFileSync(temporary, JSON.stringify({ ...value, updatedAt: new Date().toISOString() }) + '\n')
+  renameSync(temporary, progressPath)
+}
+
+/** Read progress without starting a network request or another update. */
+export function readUpdateProgress() {
+  if (!existsSync(progressPath)) {
+    return { phase: 'idle', progress: 0, currentVersion: currentVersionOrUndefined() }
+  }
+  try {
+    return readJson(progressPath)
+  } catch {
+    return { phase: 'idle', progress: 0, currentVersion: currentVersionOrUndefined() }
+  }
 }
 
 async function withLock(operation) {
@@ -166,13 +199,34 @@ export async function checkForUpdate() {
   }
 }
 
-export async function downloadBytes(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS) {
+export async function downloadBytes(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS, onProgress) {
   return fetchBody(
     url,
     { headers: { 'user-agent': 'deepseek-harness-web-runtime' } },
     timeoutMs,
     'update download',
-    async response => Buffer.from(await response.arrayBuffer()),
+    async response => {
+      const totalHeader = response.headers.get('content-length')
+      const total = totalHeader === null ? undefined : Number(totalHeader)
+      if (onProgress === undefined || response.body === null) {
+        const bytes = Buffer.from(await response.arrayBuffer())
+        onProgress?.(bytes.length, Number.isFinite(total) ? total : undefined)
+        return bytes
+      }
+      const reader = response.body.getReader()
+      const chunks = []
+      let received = 0
+      for (;;) {
+        const next = await reader.read()
+        if (next.done) break
+        if (next.value !== undefined) {
+          chunks.push(Buffer.from(next.value))
+          received += next.value.byteLength
+          onProgress(received, Number.isFinite(total) ? total : undefined)
+        }
+      }
+      return Buffer.concat(chunks)
+    },
   )
 }
 
@@ -236,6 +290,17 @@ function writeCurrent(version) {
   renameSync(temporary, currentPath)
 }
 
+function syncStableRuntimeFiles(archiveRoot) {
+  for (const filename of STABLE_RUNTIME_FILES) {
+    const source = join(archiveRoot, filename)
+    if (!existsSync(source)) throw new Error('downloaded Web archive is missing stable file ' + filename)
+    const destination = join(runtimeRoot, filename)
+    const temporary = destination + '.tmp-' + process.pid
+    copyFileSync(source, temporary)
+    renameSync(temporary, destination)
+  }
+}
+
 async function startService(args) {
   return (await startUnlockedForUpdate(args)) === 0
 }
@@ -253,7 +318,15 @@ async function applyUpdate(info, restart) {
   if (!info.archiveUrl || !info.checksumUrl) throw new Error('update metadata has no verified download URLs')
   const archiveName = 'deepseek-harness-web-v' + info.latestVersion + '.tar.gz'
   const { networkTimeoutMs } = releaseConfig()
-  const archiveBytes = await downloadBytes(info.archiveUrl, networkTimeoutMs)
+  writeProgress({ phase: 'downloading', progress: 5, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+  const archiveBytes = await downloadBytes(info.archiveUrl, networkTimeoutMs, (received, total) => {
+    const ratio = total === undefined || total <= 0 ? 0 : Math.min(1, received / total)
+    writeProgress({
+      phase: 'downloading', progress: 5 + Math.round(ratio * 45), currentVersion: info.currentVersion,
+      targetVersion: info.latestVersion, bytesDownloaded: received, ...(total === undefined ? {} : { bytesTotal: total }),
+    })
+  })
+  writeProgress({ phase: 'verifying', progress: 55, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
   const checksumText = (await downloadBytes(info.checksumUrl, networkTimeoutMs)).toString('utf8')
   const expected = expectedChecksum(checksumText, archiveName)
   const actual = createHash('sha256').update(archiveBytes).digest('hex')
@@ -268,28 +341,37 @@ async function applyUpdate(info, restart) {
   const targetRoot = join(versionsRoot, 'v' + info.latestVersion)
   try {
     mkdirSync(versionsRoot, { recursive: true })
+    mkdirSync(extractedRoot, { recursive: true })
+    writeFileSync(archivePath, archiveBytes)
+    assertArchiveEntries(archivePath, topDirectory)
+    writeProgress({ phase: 'extracting', progress: 62, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+    const extracted = spawnSync('tar', ['-xzf', archivePath, '-C', extractedRoot, '--no-same-owner'], { stdio: 'inherit' })
+    if (extracted.status !== 0) throw new Error('could not extract the downloaded Web archive')
+    if (!existsSync(join(stagedVersionRoot, 'package.json'))) throw new Error('downloaded Web archive is incomplete')
     if (existsSync(targetRoot)) {
       if (!isInstalledVersion(targetRoot)) {
         throw new Error('runtime version ' + info.latestVersion + ' already exists but is incomplete')
       }
     } else {
-      mkdirSync(extractedRoot, { recursive: true })
-      writeFileSync(archivePath, archiveBytes)
-      assertArchiveEntries(archivePath, topDirectory)
-      const extracted = spawnSync('tar', ['-xzf', archivePath, '-C', extractedRoot, '--no-same-owner'], { stdio: 'inherit' })
-      if (extracted.status !== 0) throw new Error('could not extract the downloaded Web archive')
-      if (!existsSync(join(stagedVersionRoot, 'package.json'))) throw new Error('downloaded Web archive is incomplete')
+      writeProgress({ phase: 'installing', progress: 68, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
       installRuntimeDependencies(stagedVersionRoot)
       if (!isInstalledVersion(stagedVersionRoot)) throw new Error('could not install dependencies for the downloaded Web archive')
       renameSync(stagedVersionRoot, targetRoot)
     }
+    syncStableRuntimeFiles(archiveRoot)
 
     const previous = activeVersion()
     const pid = readPid()
     const wasRunning = pid !== undefined && isAlive(pid)
     const args = savedStartArgs()
-    if (wasRunning) await stopProcess(pid)
+    if (wasRunning) {
+      writeProgress({ phase: 'switching', progress: 94, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+      await stopProcess(pid)
+    }
     writeCurrent(info.latestVersion)
+    if (wasRunning && restart) {
+      writeProgress({ phase: 'restarting', progress: 98, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+    }
     if (wasRunning && restart && !(await startService(args))) {
       writeCurrent(previous)
       if (!(await startService(args))) throw new Error('new Web runtime failed to start; the previous version was restored but could not be restarted')
@@ -297,6 +379,7 @@ async function applyUpdate(info, restart) {
     }
     console.log('DeepSeek Harness Web updated from ' + info.currentVersion + ' to ' + info.latestVersion)
     if (wasRunning && restart) console.log('The background Web service was restarted.')
+    writeProgress({ phase: 'completed', progress: 100, currentVersion: info.latestVersion, targetVersion: info.latestVersion })
   } finally {
     rmSync(workRoot, { recursive: true, force: true })
   }
@@ -318,22 +401,41 @@ export async function runUpdate(argv = process.argv.slice(2)) {
   const json = argv.includes('--json')
   const yes = argv.includes('--yes')
   const restart = !argv.includes('--no-restart')
-  const info = await checkForUpdate()
-  if (json) console.log(JSON.stringify(info))
-  else if (!info.updateAvailable) console.log('DeepSeek Harness Web is up to date (' + info.currentVersion + ').')
-  else console.log('DeepSeek Harness Web update available: ' + info.currentVersion + ' -> ' + info.latestVersion)
-  if (checkOnly || !info.updateAvailable) return info
-  const confirmed = yes || await promptConfirmation(info.latestVersion)
-  if (!confirmed) {
-    if (!json) console.log('Update cancelled.')
+  let info
+  try {
+    if (!checkOnly) writeProgress({ phase: 'checking', progress: 0, currentVersion: currentVersionOrUndefined() })
+    info = await checkForUpdate()
+    if (json) console.log(JSON.stringify(info))
+    else if (!info.updateAvailable) console.log('DeepSeek Harness Web is up to date (' + info.currentVersion + ').')
+    else console.log('DeepSeek Harness Web update available: ' + info.currentVersion + ' -> ' + info.latestVersion)
+    if (checkOnly || !info.updateAvailable) {
+      if (!checkOnly) writeProgress({ phase: 'idle', progress: 0, currentVersion: info.currentVersion })
+      return info
+    }
+    const confirmed = yes || await promptConfirmation(info.latestVersion)
+    if (!confirmed) {
+      if (!json) console.log('Update cancelled.')
+      writeProgress({ phase: 'idle', progress: 0, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
+      return info
+    }
+    await withLock(() => applyUpdate(info, restart))
     return info
+  } catch (error) {
+    if (!checkOnly) {
+      writeProgress({
+        phase: 'failed', progress: 0, currentVersion: info?.currentVersion ?? currentVersionOrUndefined(),
+        ...(info?.latestVersion === undefined ? {} : { targetVersion: info.latestVersion }),
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    throw error
   }
-  await withLock(() => applyUpdate(info, restart))
-  return info
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  runUpdate().catch(error => {
+  if (process.argv.includes('--status')) {
+    console.log(JSON.stringify(readUpdateProgress()))
+  } else runUpdate().catch(error => {
     console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1
   })

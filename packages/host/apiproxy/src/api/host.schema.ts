@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod'
-import type { DirectoryEntry } from './host.ts'
+import type { DirectoryEntry, RuntimeUpdatePhase } from './host.ts'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 
@@ -100,6 +100,23 @@ export const hostUpdateCheckValueSchema = z.object({
   installAvailable: z.boolean().optional(),
   releaseUrl: z.string().optional(),
 }) satisfies z.ZodType<Wire<ResponseValue<'host.updateCheck'>>>
+
+/** host.updateStatus request payload (empty object literal). */
+export const hostUpdateStatusRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'host.updateStatus'>>>
+
+/** host.updateStatus response value. */
+export const hostUpdateStatusValueSchema = z.object({
+  phase: z.enum([
+    'idle', 'checking', 'downloading', 'verifying', 'extracting', 'installing',
+    'switching', 'restarting', 'completed', 'failed',
+  ] satisfies RuntimeUpdatePhase[]),
+  progress: z.number().min(0).max(100),
+  currentVersion: z.string().optional(),
+  targetVersion: z.string().optional(),
+  bytesDownloaded: z.number().int().nonnegative().optional(),
+  bytesTotal: z.number().int().positive().optional(),
+  error: z.string().optional(),
+}) satisfies z.ZodType<Wire<ResponseValue<'host.updateStatus'>>>
 
 /** host.updateInstall request payload (empty object literal). */
 export const hostUpdateInstallRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'host.updateInstall'>>>

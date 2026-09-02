@@ -5,6 +5,30 @@
 
 import type { RpcRequest, RpcResponse } from './rpc.ts'
 
+/** Lifecycle phase reported while a managed Web runtime update is running. */
+export type RuntimeUpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'verifying'
+  | 'extracting'
+  | 'installing'
+  | 'switching'
+  | 'restarting'
+  | 'completed'
+  | 'failed'
+
+/** Read-only progress snapshot for the managed Web runtime updater. */
+export interface RuntimeUpdateStatus {
+  phase: RuntimeUpdatePhase
+  progress: number
+  currentVersion?: string
+  targetVersion?: string
+  bytesDownloaded?: number
+  bytesTotal?: number
+  error?: string
+}
+
 /** One directory row of a listing: a child entry or a breadcrumb ancestor. */
 export interface DirectoryEntry {
   /** Base name shown in a browser row (a root crumb carries its full path). */
@@ -121,6 +145,11 @@ export interface HostApi {
     installAvailable?: boolean
     releaseUrl?: string
   }>>
+
+  /** Read the current managed runtime update phase without starting an update. */
+  updateStatus(
+    request: RpcRequest<{}>,
+  ): Promise<RpcResponse<RuntimeUpdateStatus>>
 
   /** Start a confirmed local update; the updater restarts the managed service. */
   updateInstall(

@@ -33,7 +33,7 @@ import {
   hostCreateDirectoryRequestSchema, hostDescribeRequestSchema,
   hostListDirectoryRequestSchema, hostOpenPathRequestSchema,
   hostPickDirectoryRequestSchema, hostUploadDroppedFileRequestSchema,
-  hostUpdateCheckRequestSchema, hostUpdateInstallRequestSchema,
+  hostUpdateCheckRequestSchema, hostUpdateInstallRequestSchema, hostUpdateStatusRequestSchema,
 } from '../api/host.schema.ts'
 import {
   workspaceArchiveSessionRequestSchema,
@@ -112,6 +112,7 @@ const UNARY_ROUTES: UnaryRoutes = {
   'host.openPath': { schema: hostOpenPathRequestSchema, invoke: (api, r, signal) => api.host.openPath(r, signal) },
   'host.uploadDroppedFile': { schema: hostUploadDroppedFileRequestSchema, invoke: (api, r, signal) => api.host.uploadDroppedFile(r, signal) },
   'host.updateCheck': { schema: hostUpdateCheckRequestSchema, invoke: (api, r) => api.host.updateCheck(r) },
+  'host.updateStatus': { schema: hostUpdateStatusRequestSchema, invoke: (api, r) => api.host.updateStatus(r) },
   'host.updateInstall': { schema: hostUpdateInstallRequestSchema, invoke: (api, r) => api.host.updateInstall(r) },
   'workspace.list': { schema: workspaceListRequestSchema, invoke: (api, r) => api.workspace.list(r) },
   'workspace.create': { schema: workspaceCreateRequestSchema, invoke: (api, r) => api.workspace.create(r) },

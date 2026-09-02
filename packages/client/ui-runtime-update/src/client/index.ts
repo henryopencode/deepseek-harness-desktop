@@ -6,11 +6,14 @@ import type { RpcResult } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { RuntimeUpdateNotice } from './RuntimeUpdateNotice.tsx'
-import type { RuntimeUpdateInfo, RuntimeUpdateInjected } from './RuntimeUpdateNotice.tsx'
+import type { RuntimeUpdateInfo, RuntimeUpdateInjected, RuntimeUpdateStatus } from './RuntimeUpdateNotice.tsx'
 import { en, zh, type RuntimeUpdateKey } from './locales.ts'
 
-export type { RuntimeUpdateInfo, RuntimeUpdateInjected, RuntimeUpdateNoticeProps, WaitForVersionOptions } from './RuntimeUpdateNotice.tsx'
-export { RuntimeUpdateNotice, waitForVersion } from './RuntimeUpdateNotice.tsx'
+export type {
+  RuntimeUpdateInfo, RuntimeUpdateInjected, RuntimeUpdateNoticeProps, RuntimeUpdatePhase,
+  RuntimeUpdateStatus, WaitForUpdateOptions, WaitForVersionOptions,
+} from './RuntimeUpdateNotice.tsx'
+export { RuntimeUpdateNotice, waitForUpdate, waitForVersion } from './RuntimeUpdateNotice.tsx'
 export type { RuntimeUpdateKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -49,6 +52,10 @@ export function apply(ctx: ClientContext): void {
     install: async (): Promise<void> => {
       const response = await connection.api.host.updateInstall({})
       valueFrom(response.result)
+    },
+    status: async (): Promise<RuntimeUpdateStatus> => {
+      const response = await connection.api.host.updateStatus({})
+      return valueFrom(response.result)
     },
     readVersion: async (): Promise<string> => {
       const response = await connection.api.host.describe({})

@@ -14,6 +14,30 @@ export interface RuntimeUpdateInfo {
   releaseUrl?: string
 }
 
+/** Lifecycle phase reported by the managed Web runtime updater. */
+export type RuntimeUpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'verifying'
+  | 'extracting'
+  | 'installing'
+  | 'switching'
+  | 'restarting'
+  | 'completed'
+  | 'failed'
+
+/** Progress snapshot polled while a managed update is being installed. */
+export interface RuntimeUpdateStatus {
+  phase: RuntimeUpdatePhase
+  progress: number
+  currentVersion?: string
+  targetVersion?: string
+  bytesDownloaded?: number
+  bytesTotal?: number
+  error?: string
+}
+
 /** Delay between release-feed checks while a page stays open. */
 export const RUNTIME_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000
 
@@ -33,6 +57,8 @@ export interface RuntimeUpdateInjected {
   check: () => Promise<RuntimeUpdateInfo>
   /** Start the managed runtime installer; availability is carried by the check result. */
   install?: () => Promise<void>
+  /** Read the managed installer's current phase and percentage. */
+  status?: () => Promise<RuntimeUpdateStatus>
   readVersion: () => Promise<string>
   /** Optional page reload hook, injectable for non-browser tests. */
   reload?: () => void
@@ -48,6 +74,11 @@ export interface WaitForVersionOptions {
   attempts?: number
   delayMs?: number
   sleep?: (delayMs: number) => Promise<void>
+}
+
+/** Polling options for a status-aware update wait. */
+export interface WaitForUpdateOptions extends WaitForVersionOptions {
+  onProgress?: (status: RuntimeUpdateStatus) => void
 }
 
 /**
@@ -76,8 +107,55 @@ export async function waitForVersion(
   return false
 }
 
+class RuntimeUpdateFailure extends Error {}
+
+/** Wait for the managed updater to finish while forwarding progress snapshots. */
+export async function waitForUpdate(
+  readVersion: () => Promise<string>,
+  readStatus: () => Promise<RuntimeUpdateStatus>,
+  targetVersion: string,
+  options: WaitForUpdateOptions = {},
+): Promise<boolean> {
+  const attempts = options.attempts ?? RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS
+  const delayMs = options.delayMs ?? RUNTIME_UPDATE_INSTALL_WAIT_INTERVAL_MS
+  const sleep = options.sleep ?? ((delay: number) => new Promise<void>((resolve) => { setTimeout(resolve, delay) }))
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const status = await readStatus()
+      options.onProgress?.(status)
+      if (status.phase === 'failed') throw new RuntimeUpdateFailure(status.error ?? 'managed update failed')
+    } catch (error) {
+      if (error instanceof RuntimeUpdateFailure) throw error
+    }
+    try {
+      if (await readVersion() === targetVersion) return true
+    } catch {
+      // The service is expected to reject while it is restarting.
+    }
+    if (attempt + 1 < attempts) await sleep(delayMs)
+  }
+  return false
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+const PHASE_LABEL_KEYS: Record<RuntimeUpdatePhase, RuntimeUpdateKey> = {
+  idle: 'phaseIdle',
+  checking: 'phaseChecking',
+  downloading: 'phaseDownloading',
+  verifying: 'phaseVerifying',
+  extracting: 'phaseExtracting',
+  installing: 'phaseInstalling',
+  switching: 'phaseSwitching',
+  restarting: 'phaseRestarting',
+  completed: 'phaseCompleted',
+  failed: 'phaseFailed',
+}
+
+function phaseLabel(phase: RuntimeUpdatePhase, t: Translate<RuntimeUpdateKey>): string {
+  return t(PHASE_LABEL_KEYS[phase])
 }
 
 /**
@@ -87,11 +165,12 @@ function messageOf(error: unknown): string {
  * @param props - Host update callbacks and localized copy.
  * @returns the update modal while an update is available.
  */
-export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: RuntimeUpdateNoticeProps) {
+export function RuntimeUpdateNotice({ check, install, status, readVersion, reload, t }: RuntimeUpdateNoticeProps) {
   const [info, setInfo] = useState<RuntimeUpdateInfo | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<RuntimeUpdateStatus | null>(null)
   const alive = useRef(true)
   const dismissedVersion = useRef<string | undefined>(undefined)
 
@@ -134,10 +213,15 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
     if (busy || info === null || install === undefined) return
     setBusy(true)
     setError(null)
+    setProgress({ phase: 'checking', progress: 0, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
     try {
       await install()
       if (alive.current) setError(null)
-      const updated = await waitForVersion(readVersion, info.latestVersion)
+      const updated = status === undefined
+        ? await waitForVersion(readVersion, info.latestVersion)
+        : await waitForUpdate(readVersion, status, info.latestVersion, {
+          onProgress: (next) => { if (alive.current) setProgress(next) },
+        })
       if (!updated) {
         if (alive.current) {
           setBusy(false)
@@ -153,7 +237,7 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
         setError(t('error', { message: messageOf(reason) }))
       }
     }
-  }, [busy, info, install, readVersion, reload, t])
+  }, [busy, info, install, readVersion, reload, status, t])
 
   if (info === null || !open) return null
   const canInstall = info.installAvailable ?? install !== undefined
@@ -179,7 +263,16 @@ export function RuntimeUpdateNotice({ check, install, readVersion, reload, t }: 
     >
       <div className={css.body}>
         {!canInstall && <p className={css.status} role="status">{t('remote')}</p>}
-        {busy && <p className={css.status} role="status">{t('waiting')}</p>}
+        {busy && progress !== null && (
+          <div className={css.progress} role="status" aria-label={t('progressLabel')}>
+            <div className={css.progressHeader}>
+              <span>{phaseLabel(progress.phase, t)}</span>
+              <span>{Math.round(progress.progress)}%</span>
+            </div>
+            <progress className={css.progressBar} max={100} value={progress.progress} />
+          </div>
+        )}
+        {busy && progress === null && <p className={css.status} role="status">{t('waiting')}</p>}
         {error !== null && <p className={css.error} role="alert">{error}</p>}
       </div>
     </Modal>

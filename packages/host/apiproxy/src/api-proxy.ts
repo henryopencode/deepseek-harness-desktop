@@ -42,7 +42,7 @@ import type {
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
+  WorkspaceId, WorkspaceView, RuntimeUpdatePhase, RuntimeUpdateStatus,
 } from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
@@ -1128,6 +1128,68 @@ function runWebUpdateCheck(script: string): Promise<{
           latestVersion: record.latestVersion,
           updateAvailable: record.updateAvailable,
           ...typeof record.releaseUrl === 'string' ? { releaseUrl: record.releaseUrl } : {},
+        })
+      } catch (error) {
+        reject(error)
+      }
+    })
+  })
+}
+
+const RUNTIME_UPDATE_PHASES = new Set<RuntimeUpdatePhase>([
+  'idle', 'checking', 'downloading', 'verifying', 'extracting', 'installing',
+  'switching', 'restarting', 'completed', 'failed',
+])
+
+/** Run the updater's read-only progress query and validate its subprocess output. */
+function runWebUpdateStatus(script: string): Promise<RuntimeUpdateStatus> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script, '--status', '--json'], {
+      cwd: dirname(script),
+      env: { ...process.env, DSH_WEB_RUNTIME_ROOT: dirname(script) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => { stdout += chunk })
+    child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    child.once('error', reject)
+    child.once('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `update status exited with code ${String(code)}`))
+        return
+      }
+      try {
+        const value: unknown = JSON.parse(stdout.trim())
+        if (typeof value !== 'object' || value === null) throw new Error('update status returned invalid JSON')
+        const record = value as Record<string, unknown>
+        if (typeof record.phase !== 'string' || !RUNTIME_UPDATE_PHASES.has(record.phase as RuntimeUpdatePhase)) {
+          throw new Error('update status returned an unknown phase')
+        }
+        if (typeof record.progress !== 'number' || !Number.isFinite(record.progress) || record.progress < 0 || record.progress > 100) {
+          throw new Error('update status returned an invalid progress value')
+        }
+        const optionalString = (key: string): string | undefined => typeof record[key] === 'string' ? record[key] as string : undefined
+        const optionalNumber = (key: string): number | undefined => {
+          const value = record[key]
+          return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined
+        }
+        const currentVersion = optionalString('currentVersion')
+        const targetVersion = optionalString('targetVersion')
+        const bytesDownloaded = optionalNumber('bytesDownloaded')
+        const bytesTotal = optionalNumber('bytesTotal')
+        const error = optionalString('error')
+        resolve({
+          phase: record.phase as RuntimeUpdatePhase,
+          progress: record.progress,
+          ...(currentVersion === undefined ? {} : { currentVersion }),
+          ...(targetVersion === undefined ? {} : { targetVersion }),
+          ...(bytesDownloaded === undefined ? {} : { bytesDownloaded }),
+          ...(bytesTotal === undefined ? {} : { bytesTotal }),
+          ...(error === undefined ? {} : { error }),
         })
       } catch (error) {
         reject(error)
@@ -3080,6 +3142,22 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           return err(request, {
             code: 'internal',
             message: `remote update check failed: ${error instanceof Error ? error.message : String(error)}`,
+            details: {},
+          })
+        }
+      },
+
+      async updateStatus(request) {
+        const script = webUpdateScript(defaults.webRuntimeRoot)
+        if (script === undefined) {
+          return err(request, { code: 'internal', message: 'remote updates are unavailable in this deployment', details: {} })
+        }
+        try {
+          return ok(request, await runWebUpdateStatus(script))
+        } catch (error: unknown) {
+          return err(request, {
+            code: 'internal',
+            message: `remote update status failed: ${error instanceof Error ? error.message : String(error)}`,
             details: {},
           })
         }

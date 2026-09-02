@@ -125,6 +125,13 @@ export class FakeApiClient implements IApiClient {
     latestVersion: string
     updateAvailable: boolean
   }>> = () => Promise.resolve(ok({ currentVersion: '0-fake', latestVersion: '0-fake', updateAvailable: false }))
+  onUpdateStatus: (payload: unknown) => Promise<RpcResponse<{
+    phase: 'idle' | 'checking' | 'downloading' | 'verifying' | 'extracting' | 'installing' | 'switching' | 'restarting' | 'completed' | 'failed'
+    progress: number
+    currentVersion?: string
+    targetVersion?: string
+    error?: string
+  }>> = () => Promise.resolve(ok({ phase: 'idle', progress: 0, currentVersion: '0-fake' }))
   onUpdateInstall: (payload: unknown) => Promise<RpcResponse<{ accepted: true }>> =
     () => Promise.resolve(ok({ accepted: true as const }))
 
@@ -192,6 +199,7 @@ export class FakeApiClient implements IApiClient {
     openPath: (payload: unknown) => this.record('host.openPath', payload, this.onOpenPath(payload)),
     uploadDroppedFile: (payload: unknown) => this.record('host.uploadDroppedFile', payload, this.onUploadDroppedFile(payload)),
     updateCheck: (payload: unknown) => this.record('host.updateCheck', payload, this.onUpdateCheck(payload)),
+    updateStatus: (payload: unknown) => this.record('host.updateStatus', payload, this.onUpdateStatus(payload)),
     updateInstall: (payload: unknown) => this.record('host.updateInstall', payload, this.onUpdateInstall(payload)),
   }
 

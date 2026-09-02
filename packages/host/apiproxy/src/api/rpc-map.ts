@@ -45,6 +45,7 @@ export interface RpcMethodMap {
   'host.openPath': HostApi['openPath']
   'host.uploadDroppedFile': HostApi['uploadDroppedFile']
   'host.updateCheck': HostApi['updateCheck']
+  'host.updateStatus': HostApi['updateStatus']
   'host.updateInstall': HostApi['updateInstall']
   'workspace.list': WorkspaceApi['list']
   'workspace.create': WorkspaceApi['create']

@@ -2665,6 +2665,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       updateCheck: request => ok(request, {
         currentVersion: '0.0.0-fixture', latestVersion: '0.0.0-fixture', updateAvailable: false,
       }),
+      updateStatus: request => ok(request, { phase: 'idle' as const, progress: 0, currentVersion: '0.0.0-fixture' }),
       updateInstall: request => ok(request, { accepted: true as const }),
     },
     workspace: {
@@ -3208,6 +3209,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'host.openPath': return this.api.host.openPath(request, new AbortController().signal)
       case 'host.uploadDroppedFile': return this.api.host.uploadDroppedFile(request, new AbortController().signal)
       case 'host.updateCheck': return this.api.host.updateCheck(request)
+      case 'host.updateStatus': return this.api.host.updateStatus(request)
       case 'host.updateInstall': return this.api.host.updateInstall(request)
       case 'workspace.list': return this.api.workspace.list(request)
       case 'workspace.create': return this.api.workspace.create(request)

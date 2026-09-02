@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { RUNTIME_UPDATE_CHECK_INTERVAL_MS, RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS, RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS, RuntimeUpdateNotice, waitForVersion, type RuntimeUpdateNoticeProps } from '../src/client/RuntimeUpdateNotice.tsx'
+import { RUNTIME_UPDATE_CHECK_INTERVAL_MS, RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS, RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS, RuntimeUpdateNotice, waitForUpdate, waitForVersion, type RuntimeUpdateNoticeProps } from '../src/client/RuntimeUpdateNotice.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => {
@@ -148,5 +148,35 @@ describe('waitForVersion', () => {
     await expect(waitForVersion(read, 'new', { attempts: 4, delayMs: 12, sleep: async (ms) => { sleeps.push(ms) } })).resolves.toBe(true)
     expect(read).toHaveBeenCalledTimes(3)
     expect(sleeps).toEqual([12, 12])
+  })
+})
+
+describe('waitForUpdate', () => {
+  it('forwards progress and resolves after the managed runtime responds', async () => {
+    const statuses = [
+      { phase: 'installing' as const, progress: 72 },
+      { phase: 'restarting' as const, progress: 98 },
+      { phase: 'completed' as const, progress: 100 },
+    ]
+    const readStatus = vi.fn().mockImplementation(async () => statuses.shift() ?? { phase: 'completed' as const, progress: 100 })
+    const readVersion = vi.fn()
+      .mockResolvedValueOnce('old')
+      .mockResolvedValueOnce('old')
+      .mockResolvedValueOnce('new')
+    const seen: number[] = []
+    await expect(waitForUpdate(readVersion, readStatus, 'new', {
+      sleep: async () => {},
+      onProgress: (status) => { seen.push(status.progress) },
+    })).resolves.toBe(true)
+    expect(seen).toEqual([72, 98, 100])
+  })
+
+  it('surfaces a managed update failure instead of waiting for the timeout', async () => {
+    await expect(waitForUpdate(
+      vi.fn().mockResolvedValue('old'),
+      vi.fn().mockResolvedValue({ phase: 'failed', progress: 68, error: '依赖安装失败' }),
+      'new',
+      { attempts: 3, sleep: async () => {} },
+    )).rejects.toThrow('依赖安装失败')
   })
 })

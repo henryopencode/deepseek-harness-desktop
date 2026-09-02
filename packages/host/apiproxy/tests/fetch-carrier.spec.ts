@@ -165,6 +165,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async updateCheck(request) {
         return { rpcId: request.rpcId, result: { ok: false, error: { code: 'internal', message: 'stub', details: {} } } }
       },
+      async updateStatus(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { phase: 'idle' as const, progress: 0 } } }
+      },
       async updateInstall(request) {
         return { rpcId: request.rpcId, result: { ok: false, error: { code: 'internal', message: 'stub', details: {} } } }
       },

@@ -17,7 +17,7 @@ import {
   hostCreateDirectoryValueSchema, hostDescribeValueSchema,
   hostListDirectoryValueSchema, hostOpenPathValueSchema, hostPickDirectoryValueSchema,
   hostUploadDroppedFileValueSchema,
-  hostUpdateCheckValueSchema, hostUpdateInstallValueSchema,
+  hostUpdateCheckValueSchema, hostUpdateInstallValueSchema, hostUpdateStatusValueSchema,
 } from '../api/host.schema.ts'
 import {
   sessionCancelValueSchema,
@@ -110,6 +110,7 @@ export interface IApiClient {
   host: {
     describe(payload: RequestPayload<'host.describe'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.describe'>>>
     updateCheck(payload: RequestPayload<'host.updateCheck'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.updateCheck'>>>
+    updateStatus(payload: RequestPayload<'host.updateStatus'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.updateStatus'>>>
     updateInstall(payload: RequestPayload<'host.updateInstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.updateInstall'>>>
     pickDirectory(payload: RequestPayload<'host.pickDirectory'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.pickDirectory'>>>
     listDirectory(payload: RequestPayload<'host.listDirectory'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.listDirectory'>>>
@@ -198,6 +199,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'host.openPath': hostOpenPathValueSchema,
   'host.uploadDroppedFile': hostUploadDroppedFileValueSchema,
   'host.updateCheck': hostUpdateCheckValueSchema,
+  'host.updateStatus': hostUpdateStatusValueSchema,
   'host.updateInstall': hostUpdateInstallValueSchema,
   'workspace.list': workspaceListValueSchema,
   'workspace.create': workspaceCreateValueSchema,
@@ -477,6 +479,7 @@ export abstract class AbstractApiClient implements IApiClient {
     openPath: (payload, signal) => this.callUnary('host.openPath', payload, signal),
     uploadDroppedFile: (payload, signal) => this.callUnary('host.uploadDroppedFile', payload, signal),
     updateCheck: (payload, signal) => this.callUnary('host.updateCheck', payload, signal),
+    updateStatus: (payload, signal) => this.callUnary('host.updateStatus', payload, signal),
     updateInstall: (payload, signal) => this.callUnary('host.updateInstall', payload, signal),
   }
 
