@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-speech-to-text-local",
   "description": "Local Whisper speech transcription Remote for DeepSeek Harness browser clients",
-  "version": "0.1.0-rc.31",
+  "version": "0.1.0-rc.32",
   "publishConfig": {
     "access": "public"
   },
