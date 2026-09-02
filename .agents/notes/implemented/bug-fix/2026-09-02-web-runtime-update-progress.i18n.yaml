@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-02-web-runtime-update-progress.md
-2026-09-02-web-runtime-update-progress.md: c8891177269a53bd58293328cb994d4b01e2a42f
-2026-09-02-web-runtime-update-progress.zh.md: 2a81b093b4fbc5185d0d8fb2ac27ab75e2f0d000
+2026-09-02-web-runtime-update-progress.md: 9af11697c17b90aee24c041bc304ef2d5f4da612
+2026-09-02-web-runtime-update-progress.zh.md: 7825783a505ade30be0146fe27dde07008491b0b

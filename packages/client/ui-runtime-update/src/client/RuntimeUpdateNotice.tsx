@@ -122,8 +122,10 @@ export async function waitForUpdate(
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const status = await readStatus()
-      options.onProgress?.(status)
-      if (status.phase === 'failed') throw new RuntimeUpdateFailure(status.error ?? 'managed update failed')
+      if (status.targetVersion === targetVersion) {
+        options.onProgress?.(status)
+        if (status.phase === 'failed') throw new RuntimeUpdateFailure(status.error ?? 'managed update failed')
+      }
     } catch (error) {
       if (error instanceof RuntimeUpdateFailure) throw error
     }

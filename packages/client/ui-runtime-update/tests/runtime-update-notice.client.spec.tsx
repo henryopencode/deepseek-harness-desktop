@@ -167,9 +167,9 @@ describe('waitForVersion', () => {
 describe('waitForUpdate', () => {
   it('forwards progress and resolves after the managed runtime responds', async () => {
     const statuses = [
-      { phase: 'installing' as const, progress: 72 },
-      { phase: 'restarting' as const, progress: 98 },
-      { phase: 'completed' as const, progress: 100 },
+      { phase: 'installing' as const, progress: 72, targetVersion: 'new' },
+      { phase: 'restarting' as const, progress: 98, targetVersion: 'new' },
+      { phase: 'completed' as const, progress: 100, targetVersion: 'new' },
     ]
     const readStatus = vi.fn().mockImplementation(async () => statuses.shift() ?? { phase: 'completed' as const, progress: 100 })
     const readVersion = vi.fn()
@@ -184,10 +184,29 @@ describe('waitForUpdate', () => {
     expect(seen).toEqual([72, 98, 100])
   })
 
+  it('ignores a completed snapshot from a previous target', async () => {
+    const statuses = [
+      { phase: 'completed' as const, progress: 100, targetVersion: 'old' },
+      { phase: 'downloading' as const, progress: 16, targetVersion: 'new' },
+      { phase: 'installing' as const, progress: 68, targetVersion: 'new' },
+    ]
+    const readStatus = vi.fn().mockImplementation(async () => statuses.shift() ?? { phase: 'installing' as const, progress: 68, targetVersion: 'new' })
+    const readVersion = vi.fn()
+      .mockResolvedValueOnce('old')
+      .mockResolvedValueOnce('old')
+      .mockResolvedValueOnce('new')
+    const seen: number[] = []
+    await expect(waitForUpdate(readVersion, readStatus, 'new', {
+      sleep: async () => {},
+      onProgress: (status) => { seen.push(status.progress) },
+    })).resolves.toBe(true)
+    expect(seen).toEqual([16, 68])
+  })
+
   it('surfaces a managed update failure instead of waiting for the timeout', async () => {
     await expect(waitForUpdate(
       vi.fn().mockResolvedValue('old'),
-      vi.fn().mockResolvedValue({ phase: 'failed', progress: 68, error: '依赖安装失败' }),
+      vi.fn().mockResolvedValue({ phase: 'failed', progress: 68, targetVersion: 'new', error: '依赖安装失败' }),
       'new',
       { attempts: 3, sleep: async () => {} },
     )).rejects.toThrow('依赖安装失败')
