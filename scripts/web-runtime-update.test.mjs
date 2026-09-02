@@ -7,7 +7,7 @@ import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writ
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { compareVersions, downloadBytes, releaseVersion, expectedChecksum } from './web-runtime-update.mjs'
+import { compareVersions, downloadAssetBytes, downloadBytes, releaseAssetDownloadUrls, releaseVersion, expectedChecksum } from './web-runtime-update.mjs'
 
 const updaterScript = fileURLToPath(new URL('./web-runtime-update.mjs', import.meta.url))
 
@@ -31,6 +31,49 @@ test('accepts the generated checksum asset format', () => {
   const checksum = 'a'.repeat(64)
   assert.equal(expectedChecksum(`${checksum}  archive.tar.gz\n`, 'archive.tar.gz'), checksum)
   assert.throws(() => expectedChecksum(`${checksum}  other.tar.gz\n`, 'archive.tar.gz'), /unexpected format/)
+})
+
+test('prefers the GitHub assets API before the browser download URL', () => {
+  const urls = releaseAssetDownloadUrls(
+    { apiBaseUrl: 'https://api.github.com', repository: 'deepseek-ai/deepseek-harness' },
+    { id: 42, browser_download_url: 'https://github.com/deepseek-ai/deepseek-harness/releases/download/dsh-v0.1.0/archive.tar.gz' },
+  )
+  assert.deepEqual(urls, [
+    { url: 'https://api.github.com/repos/deepseek-ai/deepseek-harness/releases/assets/42', headers: { accept: 'application/octet-stream' } },
+    { url: 'https://github.com/deepseek-ai/deepseek-harness/releases/download/dsh-v0.1.0/archive.tar.gz' },
+  ])
+})
+
+test('falls back to the browser download URL when the assets API fails', async () => {
+  const requests = []
+  const server = createServer((request, response) => {
+    requests.push({ path: request.url, accept: request.headers.accept })
+    if (request.url === '/asset') {
+      response.writeHead(503)
+      response.end()
+      return
+    }
+    response.writeHead(200, { 'content-length': '7' })
+    response.end('archive')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.notEqual(typeof address, 'string')
+  const origin = 'http://127.0.0.1:' + String(address.port)
+  try {
+    assert.equal((await downloadAssetBytes([
+      { url: origin + '/asset', headers: { accept: 'application/octet-stream' } },
+      { url: origin + '/download' },
+    ], 1_000)).toString('utf8'), 'archive')
+    assert.deepEqual(requests, [
+      { path: '/asset', accept: 'application/octet-stream' },
+      { path: '/download', accept: '*/*' },
+    ])
+  } finally {
+    server.close()
+    await once(server, 'close')
+  }
 })
 
 test('aborts a download whose response body stops arriving', async () => {

@@ -181,6 +181,31 @@ export function releaseVersion(tag) {
   return /^dsh-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(tag)?.[1]
 }
 
+/**
+ * Build download sources for one GitHub release asset.
+ *
+ * The API endpoint issues a short-lived object-storage redirect without first
+ * requiring a connection to github.com. Keep the browser URL as a fallback
+ * for GitHub-compatible release feeds that do not support asset downloads.
+ *
+ * @param {{ apiBaseUrl: string; repository: string }} config - Release feed configuration.
+ * @param {unknown} asset - One release asset returned by the feed.
+ * @returns {{ url: string; headers?: Record<string, string> }[]} Ordered download sources.
+ */
+export function releaseAssetDownloadUrls(config, asset) {
+  if (typeof asset !== 'object' || asset === null) return []
+  const record = asset
+  const sources = []
+  if (typeof record.id === 'number' && Number.isSafeInteger(record.id) && record.id > 0) {
+    sources.push({
+      url: config.apiBaseUrl + '/repos/' + config.repository + '/releases/assets/' + String(record.id),
+      headers: { accept: 'application/octet-stream' },
+    })
+  }
+  if (typeof record.browser_download_url === 'string') sources.push({ url: record.browser_download_url })
+  return sources
+}
+
 export async function checkForUpdate() {
   const config = releaseConfig()
   const current = activeVersion()
@@ -199,7 +224,9 @@ export async function checkForUpdate() {
   const assets = Array.isArray(release.assets) ? release.assets : []
   const archive = assets.find(asset => asset?.name === prefix + '.tar.gz')
   const checksum = assets.find(asset => asset?.name === prefix + '.tar.gz.sha256')
-  if (available && (archive?.browser_download_url === undefined || checksum?.browser_download_url === undefined)) {
+  const archiveUrls = releaseAssetDownloadUrls(config, archive)
+  const checksumUrls = releaseAssetDownloadUrls(config, checksum)
+  if (available && (archiveUrls.length === 0 || checksumUrls.length === 0)) {
     throw new Error('latest release is missing the Web archive or SHA-256 asset')
   }
   return {
@@ -209,13 +236,15 @@ export async function checkForUpdate() {
     releaseUrl: typeof release.html_url === 'string' ? release.html_url : undefined,
     archiveUrl: archive?.browser_download_url,
     checksumUrl: checksum?.browser_download_url,
+    archiveUrls,
+    checksumUrls,
   }
 }
 
-export async function downloadBytes(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS, onProgress) {
+export async function downloadBytes(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS, onProgress, headers) {
   return fetchBody(
     url,
-    { headers: { 'user-agent': 'deepseek-harness-web-runtime' } },
+    { headers: { 'user-agent': 'deepseek-harness-web-runtime', ...headers } },
     timeoutMs,
     'update download',
     async response => {
@@ -241,6 +270,26 @@ export async function downloadBytes(url, timeoutMs = DEFAULT_UPDATE_NETWORK_TIME
       return Buffer.concat(chunks)
     },
   )
+}
+
+/**
+ * Download an asset from ordered release-feed sources.
+ *
+ * @param {{ url: string; headers?: Record<string, string> }[]} sources - Download sources in preference order.
+ * @param {number} timeoutMs - Per-source network timeout.
+ * @param {(received: number, total?: number) => void} [onProgress] - Byte progress callback.
+ * @returns {Promise<Buffer>} Downloaded bytes.
+ */
+export async function downloadAssetBytes(sources, timeoutMs = DEFAULT_UPDATE_NETWORK_TIMEOUT_MS, onProgress) {
+  let lastError
+  for (const source of sources) {
+    try {
+      return await downloadBytes(source.url, timeoutMs, onProgress, source.headers)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError ?? new Error('update metadata has no verified download URLs')
 }
 
 export function expectedChecksum(text, filename) {
@@ -328,11 +377,11 @@ function isInstalledVersion(root) {
 }
 
 async function applyUpdate(info, restart) {
-  if (!info.archiveUrl || !info.checksumUrl) throw new Error('update metadata has no verified download URLs')
+  if (info.archiveUrls.length === 0 || info.checksumUrls.length === 0) throw new Error('update metadata has no verified download URLs')
   const archiveName = 'deepseek-harness-web-v' + info.latestVersion + '.tar.gz'
   const { networkTimeoutMs } = releaseConfig()
   writeProgress({ phase: 'downloading', progress: 5, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
-  const archiveBytes = await downloadBytes(info.archiveUrl, networkTimeoutMs, (received, total) => {
+  const archiveBytes = await downloadAssetBytes(info.archiveUrls, networkTimeoutMs, (received, total) => {
     const ratio = total === undefined || total <= 0 ? 0 : Math.min(1, received / total)
     writeProgress({
       phase: 'downloading', progress: 5 + Math.round(ratio * 45), currentVersion: info.currentVersion,
@@ -340,7 +389,7 @@ async function applyUpdate(info, restart) {
     })
   })
   writeProgress({ phase: 'verifying', progress: 55, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
-  const checksumText = (await downloadBytes(info.checksumUrl, networkTimeoutMs)).toString('utf8')
+  const checksumText = (await downloadAssetBytes(info.checksumUrls, networkTimeoutMs)).toString('utf8')
   const expected = expectedChecksum(checksumText, archiveName)
   const actual = createHash('sha256').update(archiveBytes).digest('hex')
   if (actual !== expected) throw new Error('SHA-256 verification failed for the downloaded Web archive')
