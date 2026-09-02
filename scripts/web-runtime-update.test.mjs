@@ -74,3 +74,26 @@ test('keeps an active update progress record when another update owns the lifecy
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('returns a detailed non-complete status while local speech recognition is building', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-web-update-status-'))
+  const state = join(root, '.dsh-runtime')
+  mkdirSync(state)
+  writeFileSync(join(root, 'current.json'), JSON.stringify({ version: 'v0.1.0-rc.26' }) + '\n')
+  const progress = {
+    phase: 'installing', progress: 85, installStep: 'whisper-building', phaseStartedAt: '2026-09-02T00:00:00.000Z',
+    currentVersion: '0.1.0-rc.26', targetVersion: '0.1.0-rc.27',
+  }
+  writeFileSync(join(state, 'update-progress.json'), JSON.stringify(progress) + '\n')
+  try {
+    const result = spawnSync(process.execPath, [updaterScript, '--status', '--json'], {
+      encoding: 'utf8',
+      env: { ...process.env, DSH_WEB_RUNTIME_ROOT: root },
+    })
+    assert.equal(result.status, 0)
+    assert.deepEqual(JSON.parse(result.stdout), progress)
+    assert.notEqual(progress.progress, 100)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

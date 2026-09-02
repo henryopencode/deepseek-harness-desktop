@@ -27,6 +27,13 @@ export type RuntimeUpdatePhase =
   | 'completed'
   | 'failed'
 
+/** Installation milestone reported while preparing a downloaded Web runtime. */
+export type RuntimeUpdateInstallStep =
+  | 'dependencies'
+  | 'whisper-configuring'
+  | 'whisper-building'
+  | 'verifying-runtime'
+
 /** Progress snapshot polled while a managed update is being installed. */
 export interface RuntimeUpdateStatus {
   phase: RuntimeUpdatePhase
@@ -35,6 +42,8 @@ export interface RuntimeUpdateStatus {
   targetVersion?: string
   bytesDownloaded?: number
   bytesTotal?: number
+  installStep?: RuntimeUpdateInstallStep
+  phaseStartedAt?: string
   error?: string
 }
 
@@ -156,6 +165,13 @@ const PHASE_LABEL_KEYS: Record<RuntimeUpdatePhase, RuntimeUpdateKey> = {
   failed: 'phaseFailed',
 }
 
+const INSTALL_STEP_LABEL_KEYS: Record<RuntimeUpdateInstallStep, RuntimeUpdateKey> = {
+  dependencies: 'installStepDependencies',
+  'whisper-configuring': 'installStepWhisperConfiguring',
+  'whisper-building': 'installStepWhisperBuilding',
+  'verifying-runtime': 'installStepVerifyingRuntime',
+}
+
 function isActiveUpdate(status: RuntimeUpdateStatus, targetVersion: string): boolean {
   return status.phase !== 'idle'
     && status.phase !== 'completed'
@@ -165,6 +181,26 @@ function isActiveUpdate(status: RuntimeUpdateStatus, targetVersion: string): boo
 
 function phaseLabel(phase: RuntimeUpdatePhase, t: Translate<RuntimeUpdateKey>): string {
   return t(PHASE_LABEL_KEYS[phase])
+}
+
+function statusLabel(status: RuntimeUpdateStatus, t: Translate<RuntimeUpdateKey>): string {
+  return status.installStep === undefined ? phaseLabel(status.phase, t) : t(INSTALL_STEP_LABEL_KEYS[status.installStep])
+}
+
+function elapsedLabel(phaseStartedAt: string | undefined, t: Translate<RuntimeUpdateKey>): string | undefined {
+  if (phaseStartedAt === undefined) return undefined
+  const startedAt = Date.parse(phaseStartedAt)
+  if (Number.isNaN(startedAt)) return undefined
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1_000))
+  const hours = Math.floor(elapsedSeconds / 3_600)
+  const minutes = Math.floor((elapsedSeconds % 3_600) / 60)
+  const seconds = elapsedSeconds % 60
+  const duration = hours > 0
+    ? t('elapsedHours', { hours, minutes, seconds })
+    : minutes > 0
+      ? t('elapsedMinutes', { minutes, seconds })
+      : t('elapsedSeconds', { seconds })
+  return t('elapsed', { duration })
 }
 
 /**
@@ -282,6 +318,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
 
   if (info === null || !open) return null
   const canInstall = info.installAvailable ?? install !== undefined
+  const elapsed = progress === null ? undefined : elapsedLabel(progress.phaseStartedAt, t)
 
   return (
     <Modal
@@ -307,10 +344,11 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
         {busy && progress !== null && (
           <div className={css.progress} role="status" aria-label={t('progressLabel')}>
             <div className={css.progressHeader}>
-              <span>{phaseLabel(progress.phase, t)}</span>
+              <span>{statusLabel(progress, t)}</span>
               <span>{Math.round(progress.progress)}%</span>
             </div>
             <progress className={css.progressBar} max={100} value={progress.progress} />
+            {elapsed !== undefined && <p className={css.progressDetail}>{elapsed}</p>}
           </div>
         )}
         {busy && progress === null && <p className={css.status} role="status">{t('waiting')}</p>}

@@ -16,6 +16,12 @@ const lockPath = join(stateRoot, '.operation.lock')
 const progressPath = join(stateRoot, 'update-progress.json')
 const DEFAULT_UPDATE_NETWORK_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_TIMER_DELAY_MS = 2_147_483_647
+const INSTALL_STEP_PROGRESS = {
+  dependencies: 68,
+  'whisper-configuring': 80,
+  'whisper-building': 85,
+  'verifying-runtime': 93,
+}
 
 class LifecycleOperationBusyError extends Error {
   constructor() {
@@ -360,8 +366,14 @@ async function applyUpdate(info, restart) {
         throw new Error('runtime version ' + info.latestVersion + ' already exists but is incomplete')
       }
     } else {
-      writeProgress({ phase: 'installing', progress: 68, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
-      installRuntimeDependencies(stagedVersionRoot)
+      await installRuntimeDependencies(stagedVersionRoot, {
+        onStep: installStep => {
+          writeProgress({
+            phase: 'installing', progress: INSTALL_STEP_PROGRESS[installStep], installStep,
+            phaseStartedAt: new Date().toISOString(), currentVersion: info.currentVersion, targetVersion: info.latestVersion,
+          })
+        },
+      })
       if (!isInstalledVersion(stagedVersionRoot)) throw new Error('could not install dependencies for the downloaded Web archive')
       renameSync(stagedVersionRoot, targetRoot)
     }

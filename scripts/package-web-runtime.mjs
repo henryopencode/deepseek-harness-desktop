@@ -100,7 +100,7 @@ writeFileSync(join(staging, 'install.mjs'), [
   "if (typeof current.version !== 'string') throw new Error('The extracted runtime has no active version')",
   "const runtimeRoot = join(webRuntimeRoot, 'versions', current.version)",
   "if (!existsSync(join(runtimeRoot, 'package.json'))) throw new Error('The extracted runtime is incomplete')",
-  'installRuntimeDependencies(runtimeRoot)',
+  'await installRuntimeDependencies(runtimeRoot)',
 ].join('\n') + '\n')
 
 copyFileSync(join(root, 'scripts/web-runtime-manager.mjs'), join(staging, 'manage.mjs'))

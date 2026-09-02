@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -24,35 +24,76 @@ export function whisperExecutablePath(runtimeRoot) {
 }
 
 /**
+ * Run one external command without blocking the updater's event loop.
+ * @param {string} command - Executable name or path.
+ * @param {string[]} args - Executable arguments.
+ * @param {string} cwd - Working directory for the command.
+ * @returns {Promise<number | null>} Process exit status.
+ */
+function runCommand(command, args, cwd) {
+  return new Promise((resolve, reject) => {
+    let child
+    try {
+      child = spawn(command, args, { cwd, stdio: 'inherit' })
+    } catch (error) {
+      reject(error)
+      return
+    }
+    child.once('error', reject)
+    child.once('close', resolve)
+  })
+}
+
+/**
  * Run one CMake command and name a missing CMake installation explicitly.
  * @param {string} sourceRoot - Bundled whisper.cpp source directory.
  * @param {string[]} args - CMake arguments.
+ * @param {(command: string, args: string[], cwd: string) => Promise<number | null>} command - Process runner.
+ * @returns {Promise<void>} Resolves after CMake exits successfully.
  */
-function runCmake(sourceRoot, args) {
-  const result = spawnSync('cmake', args, { cwd: sourceRoot, stdio: 'inherit' })
-  if (result.error?.code === 'ENOENT') {
-    throw new Error('Local speech transcription requires CMake and a native C/C++ build toolchain. Install them, then run node install.mjs again.')
+async function runCmake(sourceRoot, args, command) {
+  let result
+  try {
+    result = await command('cmake', args, sourceRoot)
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error('Local speech transcription requires CMake and a native C/C++ build toolchain. Install them, then run node install.mjs again.')
+    }
+    throw error
   }
-  if (result.error) throw result.error
-  if (result.status !== 0) throw new Error('Could not build the local Whisper executable.')
+  if (result !== 0) throw new Error('Could not build the local Whisper executable.')
 }
+
+/**
+ * Installation milestone reported by the package installer.
+ * @typedef {'dependencies' | 'whisper-configuring' | 'whisper-building' | 'verifying-runtime'} RuntimeInstallStep
+ */
 
 /**
  * Build the native Whisper CLI beside nodejs-whisper when the package install did not supply it.
  * @param {string} runtimeRoot - Installed version directory.
+ * @param {{ onStep?: (step: RuntimeInstallStep) => void; runCommand?: (command: string, args: string[], cwd: string) => Promise<number | null> }} [options] - Installation callbacks.
+ * @returns {Promise<void>} Resolves when the executable exists.
  */
-export function ensureWhisperCli(runtimeRoot) {
+export async function ensureWhisperCli(runtimeRoot, options = {}) {
   if (whisperExecutablePath(runtimeRoot) !== undefined) return
   const sourceRoot = join(runtimeRoot, ...WHISPER_CPP_PATH)
   if (!existsSync(sourceRoot)) throw new Error('Runtime dependency nodejs-whisper is incomplete after installation.')
-  runCmake(sourceRoot, ['-B', 'build'])
-  runCmake(sourceRoot, ['--build', 'build', '--target', 'whisper-cli', '--config', 'Release'])
-  if (whisperExecutablePath(runtimeRoot) === undefined) throw new Error('Whisper build completed without a whisper-cli executable.')
+  const command = options.runCommand ?? runCommand
+  options.onStep?.('whisper-configuring')
+  await runCmake(sourceRoot, ['-B', 'build'], command)
+  options.onStep?.('whisper-building')
+  await runCmake(sourceRoot, ['--build', 'build', '--target', 'whisper-cli', '--config', 'Release'], command)
+  if (whisperExecutablePath(runtimeRoot) === undefined) {
+    throw new Error('Whisper build completed without a whisper-cli executable.')
+  }
 }
 
 /**
- * Install JavaScript dependencies and their required local Whisper executable.
- * @param {string} runtimeRoot - Installed version directory.
+ * Select a working npm invocation for the current Node.js installation.
+ * @param {string} [nodePath] - Node.js executable path.
+ * @param {NodeJS.Platform} [platform] - Operating-system platform.
+ * @returns {{ command: string; args: string[] }} npm process invocation.
  */
 export function resolveNpmInvocation(nodePath = process.execPath, platform = process.platform) {
   const nodeDirectory = dirname(nodePath)
@@ -67,13 +108,22 @@ export function resolveNpmInvocation(nodePath = process.execPath, platform = pro
   return { command: platform === 'win32' ? 'npm.cmd' : 'npm', args: [] }
 }
 
-export function installRuntimeDependencies(runtimeRoot) {
+/**
+ * Install JavaScript dependencies and their required local Whisper executable.
+ * @param {string} runtimeRoot - Installed version directory.
+ * @param {{ onStep?: (step: RuntimeInstallStep) => void; runCommand?: (command: string, args: string[], cwd: string) => Promise<number | null> }} [options] - Installation callbacks.
+ * @returns {Promise<void>} Resolves after the runtime passes its executable checks.
+ */
+export async function installRuntimeDependencies(runtimeRoot, options = {}) {
+  const command = options.runCommand ?? runCommand
   const npm = resolveNpmInvocation()
-  const result = spawnSync(npm.command, [...npm.args, 'install', '--no-audit', '--no-fund', '--omit=dev'], { cwd: runtimeRoot, stdio: 'inherit' })
-  if (result.error) throw result.error
-  if (result.status !== 0) throw new Error('Could not install runtime dependencies.')
+  options.onStep?.('dependencies')
+  const result = await command(npm.command, [...npm.args, 'install', '--no-audit', '--no-fund', '--omit=dev'], runtimeRoot)
+  if (result !== 0) throw new Error('Could not install runtime dependencies.')
   if (!existsSync(join(runtimeRoot, ...DSH_BIN_PATH))) throw new Error('Runtime dependency installation did not provide the dsh executable.')
-  ensureWhisperCli(runtimeRoot)
+  await ensureWhisperCli(runtimeRoot, { onStep: options.onStep, runCommand: command })
+  options.onStep?.('verifying-runtime')
+  if (!isRuntimeInstalled(runtimeRoot)) throw new Error('Runtime dependency installation did not provide the local Whisper executable.')
 }
 
 /**

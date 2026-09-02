@@ -59,7 +59,7 @@
   inset: -2px;
   border-radius: inherit;
   background: conic-gradient(
-    var(--dsw-alias-brand-primary, var(--dsh-boot-brand)) var(--dsh-boot-arc, 72deg),
+    var(--dsw-alias-brand-primary, var(--dsh-boot-brand)) 72deg,
     transparent 0
   );
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);

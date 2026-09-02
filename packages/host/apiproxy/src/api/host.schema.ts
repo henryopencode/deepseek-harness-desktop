@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod'
-import type { DirectoryEntry, RuntimeUpdatePhase } from './host.ts'
+import type { DirectoryEntry, RuntimeUpdateInstallStep, RuntimeUpdatePhase } from './host.ts'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 
@@ -115,6 +115,10 @@ export const hostUpdateStatusValueSchema = z.object({
   targetVersion: z.string().optional(),
   bytesDownloaded: z.number().int().nonnegative().optional(),
   bytesTotal: z.number().int().positive().optional(),
+  installStep: z.enum([
+    'dependencies', 'whisper-configuring', 'whisper-building', 'verifying-runtime',
+  ] satisfies RuntimeUpdateInstallStep[]).optional(),
+  phaseStartedAt: z.string().datetime().optional(),
   error: z.string().optional(),
 }) satisfies z.ZodType<Wire<ResponseValue<'host.updateStatus'>>>
 

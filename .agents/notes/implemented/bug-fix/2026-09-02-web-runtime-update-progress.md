@@ -10,7 +10,7 @@ The browser could confirm an update and then remain busy while the managed updat
 
 ## Decision
 
-The managed updater atomically writes `update-progress.json` under `.dsh-runtime` with a phase, percentage, versions, optional byte counts, and a failure diagnostic. It acquires the lifecycle lock before writing its checking phase, and a competing update exits without changing an active progress record. The Host exposes the file through the read-only `host.updateStatus` RPC, validating the phase and numeric fields before returning it. The browser polls that RPC during installation, restores an active update after a page reload, and renders or fails only for snapshots whose target version equals the confirmed release; bounded version polling remains the completion guard for service restart. Activation copies the current lifecycle scripts to the runtime root so a successful update also installs the status-aware updater used by subsequent requests.
+The managed updater atomically writes `update-progress.json` under `.dsh-runtime` with a phase, percentage, versions, optional byte counts, installation step, step start time, and a failure diagnostic. It acquires the lifecycle lock before writing its checking phase, and a competing update exits without changing an active progress record. The Host exposes the file through the read-only `host.updateStatus` RPC, validating the phase and numeric fields before returning it. The browser polls that RPC during installation, restores an active update after a page reload, and renders or fails only for snapshots whose target version equals the confirmed release; bounded version polling remains the completion guard for service restart. Activation copies the current lifecycle scripts to the runtime root so a successful update also installs the status-aware updater used by subsequent requests.
 
 ## Verification
 
@@ -26,4 +26,4 @@ The browser and Host API tests cover status polling, target-version filtering, p
 
 ## Consequences
 
-The runtime keeps one transient progress file whose latest valid record is safe to read while an update is active. Download progress is byte-based when the server supplies a length and phase percentages remain coarse for dependency installation and restart. Older archives without the status-aware updater continue to complete through version polling, while newly activated archives expose detailed progress.
+The runtime keeps one transient progress file whose latest valid record is safe to read while an update is active. Download progress is byte-based when the server supplies a length; dependency installation reports JavaScript dependencies, Whisper configuration, Whisper compilation, and runtime verification with an elapsed time for the active step. Older archives without the status-aware updater continue to complete through version polling, while newly activated archives expose detailed progress.

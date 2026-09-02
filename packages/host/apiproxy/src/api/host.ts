@@ -18,6 +18,13 @@ export type RuntimeUpdatePhase =
   | 'completed'
   | 'failed'
 
+/** Installation milestone reported while preparing a downloaded Web runtime. */
+export type RuntimeUpdateInstallStep =
+  | 'dependencies'
+  | 'whisper-configuring'
+  | 'whisper-building'
+  | 'verifying-runtime'
+
 /** Read-only progress snapshot for the managed Web runtime updater. */
 export interface RuntimeUpdateStatus {
   phase: RuntimeUpdatePhase
@@ -26,6 +33,8 @@ export interface RuntimeUpdateStatus {
   targetVersion?: string
   bytesDownloaded?: number
   bytesTotal?: number
+  installStep?: RuntimeUpdateInstallStep
+  phaseStartedAt?: string
   error?: string
 }
 

@@ -104,6 +104,21 @@ describe('runtime update notice', () => {
     expect(status).toHaveBeenCalledTimes(2)
   })
 
+  it('shows the active installation milestone and elapsed time', async () => {
+    const status = vi.fn().mockResolvedValue({
+      phase: 'installing' as const,
+      progress: 85,
+      installStep: 'whisper-building' as const,
+      phaseStartedAt: new Date(Date.now() - 65_000).toISOString(),
+      currentVersion: '0.1.0-rc.8',
+      targetVersion: '0.1.0-rc.9',
+    })
+    render(<RuntimeUpdateNotice {...props({ status, reload: vi.fn() })} />)
+    expect(await screen.findByText('正在编译本地语音识别，首次更新通常需要数分钟')).not.toBeNull()
+    expect(screen.getByText(/已用时 1 分/)).not.toBeNull()
+    expect(screen.getByRole<HTMLProgressElement>('progressbar').value).toBe(85)
+  })
+
   it('keeps an install failure visible for retry', async () => {
     const install = vi.fn().mockRejectedValue(new Error('不可用'))
     render(<RuntimeUpdateNotice {...props({ install })} />)

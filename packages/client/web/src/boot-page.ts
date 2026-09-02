@@ -22,8 +22,6 @@ export class BootPage {
   private readonly spinner: HTMLDivElement
   private readonly hint: HTMLDivElement
   private readonly states = new Map<string, LoaderEntryState>()
-  private readonly active = new Set<string>()
-  private total = 0
   private failure: string | undefined
 
   /**
@@ -41,16 +39,6 @@ export class BootPage {
     this.card.append(this.wordmark, this.spinner, this.hint)
     this.root.append(this.card)
     container.append(this.root)
-    this.updateProgress()
-  }
-
-  /**
-   * Set the number of loader entries represented by the progress arc.
-   * @param total - Complete boot roster size.
-   */
-  setTotal(total: number): void {
-    this.total = total
-    this.updateProgress()
   }
 
   /**
@@ -60,8 +48,6 @@ export class BootPage {
    */
   setState(id: string, state: LoaderEntryState): void {
     this.states.set(id, state)
-    if (state === 'active') this.active.add(id)
-    this.updateProgress()
     this.render()
   }
 
@@ -95,9 +81,4 @@ export class BootPage {
     this.card.replaceChildren(this.wordmark, report)
   }
 
-  /** Grow the rotating arc monotonically as loader entries activate. */
-  private updateProgress(): void {
-    const ratio = this.total === 0 ? 0 : Math.min(this.active.size / this.total, 1)
-    this.spinner.style.setProperty('--dsh-boot-arc', `${String(Math.round(72 + ratio * 216))}deg`)
-  }
 }

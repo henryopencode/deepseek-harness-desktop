@@ -20,15 +20,11 @@ describe('BootPage', () => {
 
   it('keeps loading while entries are active or loading', () => {
     const { el, page } = mount()
-    page.setTotal(2)
     const spinner = el.querySelector<HTMLElement>('[data-dsh-boot-spinner]')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('72deg')
     page.setState('a', 'active')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('180deg')
     page.setState('b', 'loading')
     expect(el.querySelector('[data-dsh-boot-spinner]')).toBe(spinner)
     page.setState('b', 'active')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('288deg')
     expect(el.textContent).toContain('Loading plugins…')
     expect(el.textContent).not.toContain('Failed to load plugins')
   })

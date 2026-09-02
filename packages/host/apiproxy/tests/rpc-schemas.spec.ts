@@ -18,6 +18,7 @@ import {
   hostCreateDirectoryRequestSchema, hostCreateDirectoryValueSchema,
   hostDescribeRequestSchema, hostDescribeValueSchema,
   hostListDirectoryRequestSchema, hostListDirectoryValueSchema,
+  hostUpdateStatusValueSchema,
 } from '../src/api/host.schema.ts'
 import {
   workspaceArchiveSessionRequestSchema, workspaceArchiveSessionValueSchema,
@@ -344,6 +345,24 @@ describe('host domain schemas', () => {
       expect(() => hostCreateDirectoryRequestSchema.parse({ path: '/x', name })).toThrow()
     }
     expect(hostCreateDirectoryValueSchema.parse({ path: '/x/new' })).toEqual({ path: '/x/new' })
+  })
+
+  it('validates update progress installation milestones', () => {
+    expect(hostUpdateStatusValueSchema.parse({
+      phase: 'installing',
+      progress: 85,
+      installStep: 'whisper-building',
+      phaseStartedAt: '2026-09-02T00:00:00.000Z',
+    })).toMatchObject({ phase: 'installing', installStep: 'whisper-building' })
+    expect(() => hostUpdateStatusValueSchema.parse({
+      phase: 'installing', progress: 85, installStep: 'unknown',
+    })).toThrow()
+    expect(() => hostUpdateStatusValueSchema.parse({
+      phase: 'installing', progress: 85, phaseStartedAt: 'not-a-date',
+    })).toThrow()
+    expect(() => hostUpdateStatusValueSchema.parse({
+      phase: 'installing', progress: 101,
+    })).toThrow()
   })
 })
 

@@ -42,7 +42,7 @@ import type {
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView, RuntimeUpdatePhase, RuntimeUpdateStatus,
+  WorkspaceId, WorkspaceView, RuntimeUpdateInstallStep, RuntimeUpdatePhase, RuntimeUpdateStatus,
 } from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
@@ -1141,6 +1141,10 @@ const RUNTIME_UPDATE_PHASES = new Set<RuntimeUpdatePhase>([
   'switching', 'restarting', 'completed', 'failed',
 ])
 
+const RUNTIME_UPDATE_INSTALL_STEPS = new Set<RuntimeUpdateInstallStep>([
+  'dependencies', 'whisper-configuring', 'whisper-building', 'verifying-runtime',
+])
+
 /** Run the updater's read-only progress query and validate its subprocess output. */
 function runWebUpdateStatus(script: string): Promise<RuntimeUpdateStatus> {
   return new Promise((resolve, reject) => {
@@ -1181,6 +1185,14 @@ function runWebUpdateStatus(script: string): Promise<RuntimeUpdateStatus> {
         const targetVersion = optionalString('targetVersion')
         const bytesDownloaded = optionalNumber('bytesDownloaded')
         const bytesTotal = optionalNumber('bytesTotal')
+        const installStep = optionalString('installStep')
+        if (installStep !== undefined && (!RUNTIME_UPDATE_INSTALL_STEPS.has(installStep as RuntimeUpdateInstallStep) || record.phase !== 'installing')) {
+          throw new Error('update status returned an invalid installation step')
+        }
+        const phaseStartedAt = optionalString('phaseStartedAt')
+        if (phaseStartedAt !== undefined && Number.isNaN(Date.parse(phaseStartedAt))) {
+          throw new Error('update status returned an invalid phase start time')
+        }
         const error = optionalString('error')
         resolve({
           phase: record.phase as RuntimeUpdatePhase,
@@ -1189,6 +1201,8 @@ function runWebUpdateStatus(script: string): Promise<RuntimeUpdateStatus> {
           ...(targetVersion === undefined ? {} : { targetVersion }),
           ...(bytesDownloaded === undefined ? {} : { bytesDownloaded }),
           ...(bytesTotal === undefined ? {} : { bytesTotal }),
+          ...(installStep === undefined ? {} : { installStep: installStep as RuntimeUpdateInstallStep }),
+          ...(phaseStartedAt === undefined ? {} : { phaseStartedAt }),
           ...(error === undefined ? {} : { error }),
         })
       } catch (error) {

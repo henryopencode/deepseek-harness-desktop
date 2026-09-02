@@ -50,3 +50,10 @@
   height: 8px;
   accent-color: var(--dsw-alias-button-primary-fill);
 }
+
+.progressDetail {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
