@@ -184,6 +184,10 @@ function isActiveUpdate(status: RuntimeUpdateStatus, targetVersion: string): boo
     && (status.targetVersion === undefined || status.targetVersion === targetVersion)
 }
 
+function canStartInstall(info: RuntimeUpdateInfo, install: RuntimeUpdateInjected['install']): boolean {
+  return install !== undefined && (info.installAvailable ?? true)
+}
+
 function phaseLabel(phase: RuntimeUpdatePhase, t: Translate<RuntimeUpdateKey>): string {
   return t(PHASE_LABEL_KEYS[phase])
 }
@@ -209,7 +213,7 @@ function elapsedLabel(phaseStartedAt: string | undefined, t: Translate<RuntimeUp
 }
 
 /**
- * Render the user-confirmed update dialog. Check failures are intentionally
+ * Render the managed update dialog. Check failures are intentionally
  * silent because ordinary source checkouts and deployments without a release
  * feed are valid Web runtimes.
  * @param props - Host update callbacks and localized copy.
@@ -217,12 +221,10 @@ function elapsedLabel(phaseStartedAt: string | undefined, t: Translate<RuntimeUp
  */
 export function RuntimeUpdateNotice({ check, install, status, readVersion, reload, t }: RuntimeUpdateNoticeProps) {
   const [info, setInfo] = useState<RuntimeUpdateInfo | null>(null)
-  const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<RuntimeUpdateStatus | null>(null)
   const alive = useRef(true)
-  const dismissedVersion = useRef<string | undefined>(undefined)
 
   const markCompleted = useCallback((targetVersion: string) => {
     setBusy(false)
@@ -246,9 +248,15 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
       checking = true
       try {
         const next = await check()
-        if (cancelled || !next.updateAvailable || dismissedVersion.current === next.latestVersion) return
+        if (cancelled || !next.updateAvailable) return
+        if (!canStartInstall(next, install)) {
+          if (status === undefined) return
+          const current = await status()
+          if (!isActiveUpdate(current, next.latestVersion)
+            && !(current.phase === 'completed' && current.targetVersion === next.latestVersion)) return
+        }
+        if (cancelled) return
         setInfo(next)
-        setOpen(true)
       } catch {
         // A missing feed, an offline machine, and a source checkout all keep the
         // shell quiet; the updater remains available from its CLI entry point.
@@ -262,7 +270,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
       cancelled = true
       clearInterval(timer)
     }
-  }, [check])
+  }, [check, install, status])
 
   useEffect(() => {
     if (info === null || status === undefined) return
@@ -299,20 +307,14 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
     return () => { cancelled = true }
   }, [info, markCompleted, readVersion, status, t])
 
-  const close = useCallback(() => {
-    if (!busy) {
-      if (info !== null) dismissedVersion.current = info.latestVersion
-      setOpen(false)
-    }
-  }, [busy, info])
-
   const onInstall = useCallback(async () => {
-    if (busy || info === null || install === undefined) return
+    const installer = install
+    if (busy || info === null || installer === undefined || !(info.installAvailable ?? true)) return
     setBusy(true)
     setError(null)
     setProgress({ phase: 'checking', progress: 0, currentVersion: info.currentVersion, targetVersion: info.latestVersion })
     try {
-      await install()
+      await installer()
       if (alive.current) setError(null)
       const updated = status === undefined
         ? await waitForVersion(readVersion, info.latestVersion)
@@ -345,26 +347,22 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
     }
   }, [busy, reload, t])
 
-  if (info === null || !open) return null
-  const canInstall = info.installAvailable ?? install !== undefined
+  if (info === null) return null
+  const canInstall = canStartInstall(info, install)
   const completed = !busy && progress?.phase === 'completed' && progress.targetVersion === info.latestVersion
-  const dismissible = !busy && !completed
   const elapsed = progress === null ? undefined : elapsedLabel(progress.phaseStartedAt, t)
 
   return (
     <Modal
       open
-      onClose={close}
+      onClose={() => undefined}
       title={t('title')}
-      closeLabel={t('close')}
-      dismissible={dismissible}
+      dismissible={false}
       {...css.notice === undefined ? {} : { className: css.notice }}
       description={t('description', { current: info.currentVersion, latest: info.latestVersion })}
       footer={(
         <>
-          {completed
-            ? <Button variant="primary" onClick={onRestart}>{t('reloadNew')}</Button>
-            : <Button variant="outline" onClick={close} disabled={busy}>{t('later')}</Button>}
+          {completed && <Button variant="primary" onClick={onRestart}>{t('reloadNew')}</Button>}
           {!completed && install !== undefined && canInstall && (
             <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
               {busy ? t('installing') : t('install')}
@@ -374,7 +372,6 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
       )}
     >
       <div className={css.body}>
-        {!canInstall && <p className={css.status} role="status">{t('remote')}</p>}
         {progress !== null && (busy || completed) && (
           <div className={css.progress} role="status" aria-label={t('progressLabel')}>
             <div className={css.progressHeader}>

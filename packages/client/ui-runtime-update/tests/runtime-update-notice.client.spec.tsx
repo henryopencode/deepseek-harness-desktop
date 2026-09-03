@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { RUNTIME_UPDATE_CHECK_INTERVAL_MS, RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS, RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS, RuntimeUpdateNotice, waitForUpdate, waitForVersion, type RuntimeUpdateNoticeProps } from '../src/client/RuntimeUpdateNotice.tsx'
+import { RUNTIME_UPDATE_CHECK_INTERVAL_MS, RUNTIME_UPDATE_INSTALL_WAIT_ATTEMPTS, RUNTIME_UPDATE_INSTALL_WAIT_TIMEOUT_MS, RuntimeUpdateNotice, waitForUpdate, waitForVersion, type RuntimeUpdateNoticeProps, type RuntimeUpdateStatus } from '../src/client/RuntimeUpdateNotice.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => {
@@ -44,21 +44,6 @@ describe('runtime update notice', () => {
     expect(screen.getByRole('dialog', { name: '发现新版本' })).not.toBeNull()
   })
 
-  it('does not reopen a dismissed release but shows a later release', async () => {
-    vi.useFakeTimers()
-    const check = vi.fn()
-      .mockResolvedValueOnce({ currentVersion: '0.1.0-rc.8', latestVersion: '0.1.0-rc.9', updateAvailable: true })
-      .mockResolvedValueOnce({ currentVersion: '0.1.0-rc.8', latestVersion: '0.1.0-rc.9', updateAvailable: true })
-      .mockResolvedValueOnce({ currentVersion: '0.1.0-rc.8', latestVersion: '0.1.0-rc.10', updateAvailable: true })
-    render(<RuntimeUpdateNotice {...props({ check })} />)
-    await act(async () => { await Promise.resolve() })
-    fireEvent.click(screen.getByRole('button', { name: '稍后' }))
-    await act(async () => { await vi.advanceTimersByTimeAsync(RUNTIME_UPDATE_CHECK_INTERVAL_MS) })
-    expect(screen.queryByRole('dialog')).toBeNull()
-    await act(async () => { await vi.advanceTimersByTimeAsync(RUNTIME_UPDATE_CHECK_INTERVAL_MS) })
-    expect(screen.getByText('当前版本 0.1.0-rc.8，最新版本 0.1.0-rc.10。')).not.toBeNull()
-  })
-
   it('stops checking when the notice unmounts', async () => {
     vi.useFakeTimers()
     const check = vi.fn().mockResolvedValue({ currentVersion: '0.1.0-rc.8', latestVersion: '0.1.0-rc.8', updateAvailable: false })
@@ -70,14 +55,19 @@ describe('runtime update notice', () => {
     expect(check).toHaveBeenCalledOnce()
   })
 
-  it('shows the version and asks before installing', async () => {
+  it('requires an update action and cannot be dismissed before installing', async () => {
     const install = vi.fn().mockResolvedValue(undefined)
     render(<RuntimeUpdateNotice {...props({ install })} />)
     expect(await screen.findByRole('dialog', { name: '发现新版本' })).not.toBeNull()
     expect(screen.getByText('当前版本 0.1.0-rc.8，最新版本 0.1.0-rc.9。')).not.toBeNull()
     expect(install).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: '稍后' }))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('button', { name: '稍后' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '关闭更新提示' })).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByRole('dialog')).not.toBeNull()
+    const mask = document.querySelector('[aria-hidden="true"]') as HTMLElement
+    fireEvent.click(mask)
+    expect(screen.getByRole('dialog')).not.toBeNull()
   })
 
   it('installs once, requires reloading the new interface, and cannot be dismissed after completion', async () => {
@@ -102,19 +92,27 @@ describe('runtime update notice', () => {
   })
 
   it('restores an active installation after a page refresh without starting another one', async () => {
-    const install = vi.fn().mockResolvedValue(undefined)
-    const status = vi.fn().mockResolvedValue({
-      phase: 'installing' as const, progress: 68, currentVersion: '0.1.0-rc.8', targetVersion: '0.1.0-rc.9',
-    })
+    let resolveInstall: (() => void) | undefined
+    let currentStatus: RuntimeUpdateStatus = { phase: 'idle', progress: 0 }
+    const install = vi.fn().mockImplementation(async () => await new Promise<void>((resolve) => { resolveInstall = resolve }))
+    const status = vi.fn().mockImplementation(async () => currentStatus)
+    const readVersion = vi.fn().mockResolvedValue('0.1.0-rc.8')
+    const firstPage = render(<RuntimeUpdateNotice {...props({ install, status, readVersion })} />)
+    fireEvent.click(await screen.findByRole('button', { name: '立即更新' }))
+    await waitFor(() => { expect(install).toHaveBeenCalledOnce() })
+    currentStatus = { phase: 'installing', progress: 68, currentVersion: '0.1.0-rc.8', targetVersion: '0.1.0-rc.9' }
+    firstPage.unmount()
+    expect(resolveInstall).toBeDefined()
+
     const reload = vi.fn()
-    render(<RuntimeUpdateNotice {...props({ install, status, reload })} />)
+    render(<RuntimeUpdateNotice {...props({ install, status, readVersion, reload })} />)
     expect(await screen.findByText('安装依赖')).not.toBeNull()
-    await waitFor(() => { expect(screen.getByRole('button', { name: '重新加载新版界面' })).not.toBeNull() })
     expect(reload).not.toHaveBeenCalled()
-    expect(install).not.toHaveBeenCalled()
-    expect(status).toHaveBeenCalledTimes(2)
-    fireEvent.click(screen.getByRole('button', { name: '重新加载新版界面' }))
-    expect(reload).toHaveBeenCalledOnce()
+    expect(install).toHaveBeenCalledOnce()
+    expect(screen.getByRole<HTMLProgressElement>('progressbar').value).toBe(68)
+    currentStatus = { phase: 'completed', progress: 100, currentVersion: '0.1.0-rc.9', targetVersion: '0.1.0-rc.9' }
+    expect(await screen.findByRole('button', { name: '重新加载新版界面' })).not.toBeNull()
+    expect(install).toHaveBeenCalledOnce()
   })
 
   it('shows the active installation milestone and elapsed time', async () => {
@@ -140,7 +138,7 @@ describe('runtime update notice', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '立即更新' }).disabled).toBe(false)
   })
 
-  it('uses the host capability to hide the install action for a remote deployment', async () => {
+  it('keeps an idle remote deployment hidden when it cannot install updates', async () => {
     const remoteProps = props({
       check: vi.fn().mockResolvedValue({
         currentVersion: '0.1.0-rc.8',
@@ -148,12 +146,29 @@ describe('runtime update notice', () => {
         updateAvailable: true,
         installAvailable: false,
       }),
+      status: vi.fn().mockResolvedValue({ phase: 'idle' as const, progress: 0 }),
+    })
+    render(<RuntimeUpdateNotice {...remoteProps} />)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('restores a remote installation in progress without offering another install', async () => {
+    const remoteProps = props({
+      check: vi.fn().mockResolvedValue({
+        currentVersion: '0.1.0-rc.8',
+        latestVersion: '0.1.0-rc.9',
+        updateAvailable: true,
+        installAvailable: false,
+      }),
+      status: vi.fn().mockResolvedValue({
+        phase: 'completed' as const, progress: 100, currentVersion: '0.1.0-rc.9', targetVersion: '0.1.0-rc.9',
+      }),
     })
     render(<RuntimeUpdateNotice {...remoteProps} />)
     expect(await screen.findByRole('dialog', { name: '发现新版本' })).not.toBeNull()
-    expect(screen.getByRole('status').textContent).toBe('远程部署请通过 SSH 更新服务器。')
     expect(screen.queryByRole('button', { name: '立即更新' })).toBeNull()
-    expect(screen.getByRole('button', { name: '稍后' })).not.toBeNull()
+    expect(await screen.findByRole('button', { name: '重新加载新版界面' })).not.toBeNull()
   })
 
   it('offers the install action when the remote host explicitly enables it', async () => {
