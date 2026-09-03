@@ -80,7 +80,7 @@ describe('runtime update notice', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('installs once, shows completion, and reloads after manual restart', async () => {
+  it('installs once, requires reloading the new interface, and cannot be dismissed after completion', async () => {
     const install = vi.fn().mockResolvedValue(undefined)
     const readVersion = vi.fn().mockResolvedValue('0.1.0-rc.9')
     const reload = vi.fn()
@@ -89,8 +89,15 @@ describe('runtime update notice', () => {
     fireEvent.click(screen.getByRole('button', { name: '正在更新…' }))
     await waitFor(() => { expect(install).toHaveBeenCalledOnce() })
     expect(reload).not.toHaveBeenCalled()
-    expect(screen.getByText('更新已完成，服务已经重启。点击“重启服务”重新连接到新版本。')).not.toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '重启服务' }))
+    expect(screen.getByText('更新已完成，服务已经重启。请重新加载页面以使用新版本。')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: '稍后' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '关闭更新提示' })).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByRole('dialog')).not.toBeNull()
+    const mask = document.querySelector('[aria-hidden="true"]') as HTMLElement
+    fireEvent.click(mask)
+    expect(screen.getByRole('dialog')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重新加载新版界面' }))
     expect(reload).toHaveBeenCalledOnce()
   })
 
@@ -102,11 +109,11 @@ describe('runtime update notice', () => {
     const reload = vi.fn()
     render(<RuntimeUpdateNotice {...props({ install, status, reload })} />)
     expect(await screen.findByText('安装依赖')).not.toBeNull()
-    await waitFor(() => { expect(screen.getByRole('button', { name: '重启服务' })).not.toBeNull() })
+    await waitFor(() => { expect(screen.getByRole('button', { name: '重新加载新版界面' })).not.toBeNull() })
     expect(reload).not.toHaveBeenCalled()
     expect(install).not.toHaveBeenCalled()
     expect(status).toHaveBeenCalledTimes(2)
-    fireEvent.click(screen.getByRole('button', { name: '重启服务' }))
+    fireEvent.click(screen.getByRole('button', { name: '重新加载新版界面' }))
     expect(reload).toHaveBeenCalledOnce()
   })
 

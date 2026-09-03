@@ -267,10 +267,11 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
   useEffect(() => {
     if (info === null || status === undefined) return
     let cancelled = false
+    const isCancelled = (): boolean => cancelled
     const resume = async (): Promise<void> => {
       try {
         const current = await status()
-        if (cancelled || (
+        if (isCancelled() || (
           !isActiveUpdate(current, info.latestVersion)
           && !(current.phase === 'completed' && current.targetVersion === info.latestVersion)
         )) return
@@ -278,9 +279,9 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
         setError(null)
         setProgress(current)
         const updated = await waitForUpdate(readVersion, status, info.latestVersion, {
-          onProgress: (next) => { if (!cancelled && alive.current) setProgress(next) },
+          onProgress: (next) => { if (!isCancelled() && alive.current) setProgress(next) },
         })
-        if (cancelled || !alive.current) return
+        if (isCancelled()) return
         if (!updated) {
           setBusy(false)
           setError(t('timeout'))
@@ -288,7 +289,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
         }
         markCompleted(info.latestVersion)
       } catch (reason) {
-        if (!cancelled && alive.current) {
+        if (!isCancelled() && alive.current) {
           setBusy(false)
           setError(t('error', { message: messageOf(reason) }))
         }
@@ -347,6 +348,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
   if (info === null || !open) return null
   const canInstall = info.installAvailable ?? install !== undefined
   const completed = !busy && progress?.phase === 'completed' && progress.targetVersion === info.latestVersion
+  const dismissible = !busy && !completed
   const elapsed = progress === null ? undefined : elapsedLabel(progress.phaseStartedAt, t)
 
   return (
@@ -355,18 +357,19 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
       onClose={close}
       title={t('title')}
       closeLabel={t('close')}
+      dismissible={dismissible}
       {...css.notice === undefined ? {} : { className: css.notice }}
       description={t('description', { current: info.currentVersion, latest: info.latestVersion })}
       footer={(
         <>
-          <Button variant="outline" onClick={close} disabled={busy}>{t('later')}</Button>
           {completed
-            ? <Button variant="primary" onClick={onRestart}>{t('restart')}</Button>
-            : install !== undefined && canInstall && (
-              <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
-                {busy ? t('installing') : t('install')}
-              </Button>
-            )}
+            ? <Button variant="primary" onClick={onRestart}>{t('reloadNew')}</Button>
+            : <Button variant="outline" onClick={close} disabled={busy}>{t('later')}</Button>}
+          {!completed && install !== undefined && canInstall && (
+            <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
+              {busy ? t('installing') : t('install')}
+            </Button>
+          )}
         </>
       )}
     >

@@ -13,9 +13,10 @@ import css from './Modal.module.css'
 /**
  * Render a centered modal over a blurred page mask.
  * @param props.open - whether the dialog is showing.
- * @param props.onClose - Escape or mask click.
+ * @param props.onClose - callback for dismissible Escape or mask interactions.
  * @param props.title - dialog heading (aria-label in every mode).
  * @param props.closeLabel - accessible close-button label.
+ * @param props.dismissible - whether Escape, the mask, and the close button dismiss the dialog.
  * @param props.description - optional supporting sentence under the title.
  * @param props.children - body (inputs, etc.).
  * @param props.footer - action row (Cancel / Create).
@@ -28,7 +29,7 @@ import css from './Modal.module.css'
  * @returns null when closed; otherwise the overlay tree.
  */
 export function Modal({
-  open, onClose, title, closeLabel = 'Close', description, children, footer, className, contentClassName, headless = false,
+  open, onClose, title, closeLabel = 'Close', description, children, footer, className, contentClassName, headless = false, dismissible = true,
 }: {
   open: boolean
   onClose: () => void
@@ -40,21 +41,22 @@ export function Modal({
   className?: string
   contentClassName?: string
   headless?: boolean
+  dismissible?: boolean
 }) {
   useEffect(() => {
-    if (!open) return
+    if (!open || !dismissible) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => { document.removeEventListener('keydown', onKeyDown) }
-  }, [open, onClose])
+  }, [dismissible, open, onClose])
 
   if (!open) return null
 
   return createPortal((
     <div className={css.root} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
+      <div className={css.mask} aria-hidden="true" onClick={dismissible ? onClose : undefined} />
       <div
         className={clsx(css.dialog, className)}
         role="dialog"
@@ -68,9 +70,11 @@ export function Modal({
               <div className={clsx(css.content, contentClassName)}>
                 <div className={css.header}>
                   <h2 className={css.title}>{title}</h2>
-                  <button type="button" className={css.close} aria-label={closeLabel} onClick={onClose}>
-                    <IconCloseOutline16 size={14} />
-                  </button>
+                  {dismissible && (
+                    <button type="button" className={css.close} aria-label={closeLabel} onClick={onClose}>
+                      <IconCloseOutline16 size={14} />
+                    </button>
+                  )}
                 </div>
                 {description !== undefined && description !== '' && (
                   <p className={css.description}>{description}</p>

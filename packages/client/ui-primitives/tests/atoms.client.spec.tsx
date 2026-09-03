@@ -406,6 +406,15 @@ describe('Modal', () => {
     fireEvent.click(mask)
     expect(onClose).toHaveBeenCalledTimes(2)
   })
+
+  it('can keep a dialog open without a close button or dismissal handlers', () => {
+    const onClose = vi.fn()
+    render(<Modal open dismissible={false} onClose={onClose} title="Update complete">body</Modal>)
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(document.querySelector('[aria-hidden="true"]') as HTMLElement)
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })
 
 describe('ConnectionBanner', () => {
