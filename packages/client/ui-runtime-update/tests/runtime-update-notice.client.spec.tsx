@@ -80,7 +80,7 @@ describe('runtime update notice', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('installs once and reloads after the target version answers', async () => {
+  it('installs once, shows completion, and reloads after manual restart', async () => {
     const install = vi.fn().mockResolvedValue(undefined)
     const readVersion = vi.fn().mockResolvedValue('0.1.0-rc.9')
     const reload = vi.fn()
@@ -88,6 +88,9 @@ describe('runtime update notice', () => {
     fireEvent.click(await screen.findByRole('button', { name: '立即更新' }))
     fireEvent.click(screen.getByRole('button', { name: '正在更新…' }))
     await waitFor(() => { expect(install).toHaveBeenCalledOnce() })
+    expect(reload).not.toHaveBeenCalled()
+    expect(screen.getByText('更新已完成，服务已经重启。点击“重启服务”重新连接到新版本。')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重启服务' }))
     expect(reload).toHaveBeenCalledOnce()
   })
 
@@ -99,9 +102,12 @@ describe('runtime update notice', () => {
     const reload = vi.fn()
     render(<RuntimeUpdateNotice {...props({ install, status, reload })} />)
     expect(await screen.findByText('安装依赖')).not.toBeNull()
-    await waitFor(() => { expect(reload).toHaveBeenCalledOnce() })
+    await waitFor(() => { expect(screen.getByRole('button', { name: '重启服务' })).not.toBeNull() })
+    expect(reload).not.toHaveBeenCalled()
     expect(install).not.toHaveBeenCalled()
     expect(status).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole('button', { name: '重启服务' }))
+    expect(reload).toHaveBeenCalledOnce()
   })
 
   it('shows the active installation milestone and elapsed time', async () => {
@@ -113,7 +119,7 @@ describe('runtime update notice', () => {
       currentVersion: '0.1.0-rc.8',
       targetVersion: '0.1.0-rc.9',
     })
-    render(<RuntimeUpdateNotice {...props({ status, reload: vi.fn() })} />)
+    render(<RuntimeUpdateNotice {...props({ status, readVersion: vi.fn().mockResolvedValue('0.1.0-rc.8'), reload: vi.fn() })} />)
     expect(await screen.findByText('正在编译本地语音识别，首次更新通常需要数分钟')).not.toBeNull()
     expect(screen.getByText(/已用时 1 分/)).not.toBeNull()
     expect(screen.getByRole<HTMLProgressElement>('progressbar').value).toBe(85)
@@ -197,6 +203,19 @@ describe('waitForUpdate', () => {
       onProgress: (status) => { seen.push(status.progress) },
     })).resolves.toBe(true)
     expect(seen).toEqual([72, 98, 100])
+  })
+
+  it('finishes from the updater completed acknowledgement before host.describe catches up', async () => {
+    const readStatus = vi.fn().mockResolvedValue({ phase: 'completed' as const, progress: 100, targetVersion: 'new' })
+    const readVersion = vi.fn().mockResolvedValue('old')
+    const seen: number[] = []
+    await expect(waitForUpdate(readVersion, readStatus, 'new', {
+      attempts: 2,
+      sleep: async () => {},
+      onProgress: (status) => { seen.push(status.progress) },
+    })).resolves.toBe(true)
+    expect(seen).toEqual([100])
+    expect(readVersion).not.toHaveBeenCalled()
   })
 
   it('ignores a completed snapshot from a previous target', async () => {

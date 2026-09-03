@@ -134,6 +134,11 @@ export async function waitForUpdate(
       if (status.targetVersion === targetVersion) {
         options.onProgress?.(status)
         if (status.phase === 'failed') throw new RuntimeUpdateFailure(status.error ?? 'managed update failed')
+        // The updater writes `completed` only after the managed service has
+        // switched versions and passed its startup check. Treat that durable
+        // acknowledgement as success even if the browser's old connection
+        // still answers host.describe briefly during reconnection.
+        if (status.phase === 'completed') return true
       }
     } catch (error) {
       if (error instanceof RuntimeUpdateFailure) throw error
@@ -219,6 +224,18 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
   const alive = useRef(true)
   const dismissedVersion = useRef<string | undefined>(undefined)
 
+  const markCompleted = useCallback((targetVersion: string) => {
+    setBusy(false)
+    setError(null)
+    setProgress(previous => ({
+      phase: 'completed',
+      progress: 100,
+      currentVersion: targetVersion,
+      targetVersion,
+      ...(previous?.phaseStartedAt === undefined ? {} : { phaseStartedAt: previous.phaseStartedAt }),
+    }))
+  }, [])
+
   useEffect(() => () => { alive.current = false }, [])
 
   useEffect(() => {
@@ -253,7 +270,10 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
     const resume = async (): Promise<void> => {
       try {
         const current = await status()
-        if (cancelled || !isActiveUpdate(current, info.latestVersion)) return
+        if (cancelled || (
+          !isActiveUpdate(current, info.latestVersion)
+          && !(current.phase === 'completed' && current.targetVersion === info.latestVersion)
+        )) return
         setBusy(true)
         setError(null)
         setProgress(current)
@@ -266,8 +286,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
           setError(t('timeout'))
           return
         }
-        if (reload !== undefined) reload()
-        else if (typeof window !== 'undefined') window.location.reload()
+        markCompleted(info.latestVersion)
       } catch (reason) {
         if (!cancelled && alive.current) {
           setBusy(false)
@@ -277,7 +296,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
     }
     void resume()
     return () => { cancelled = true }
-  }, [info, readVersion, reload, status, t])
+  }, [info, markCompleted, readVersion, status, t])
 
   const close = useCallback(() => {
     if (!busy) {
@@ -306,18 +325,28 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
         }
         return
       }
-      if (reload !== undefined) reload()
-      else if (typeof window !== 'undefined') window.location.reload()
+      markCompleted(info.latestVersion)
     } catch (reason) {
       if (alive.current) {
         setBusy(false)
         setError(t('error', { message: messageOf(reason) }))
       }
     }
-  }, [busy, info, install, readVersion, reload, status, t])
+  }, [busy, info, install, markCompleted, readVersion, status, t])
+
+  const onRestart = useCallback(() => {
+    if (busy) return
+    try {
+      if (reload !== undefined) reload()
+      else if (typeof window !== 'undefined') window.location.reload()
+    } catch (reason) {
+      setError(t('error', { message: messageOf(reason) }))
+    }
+  }, [busy, reload, t])
 
   if (info === null || !open) return null
   const canInstall = info.installAvailable ?? install !== undefined
+  const completed = !busy && progress?.phase === 'completed' && progress.targetVersion === info.latestVersion
   const elapsed = progress === null ? undefined : elapsedLabel(progress.phaseStartedAt, t)
 
   return (
@@ -331,17 +360,19 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
       footer={(
         <>
           <Button variant="outline" onClick={close} disabled={busy}>{t('later')}</Button>
-          {install !== undefined && canInstall && (
-            <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
-              {busy ? t('installing') : t('install')}
-            </Button>
-          )}
+          {completed
+            ? <Button variant="primary" onClick={onRestart}>{t('restart')}</Button>
+            : install !== undefined && canInstall && (
+              <Button variant="primary" onClick={() => { void onInstall() }} disabled={busy}>
+                {busy ? t('installing') : t('install')}
+              </Button>
+            )}
         </>
       )}
     >
       <div className={css.body}>
         {!canInstall && <p className={css.status} role="status">{t('remote')}</p>}
-        {busy && progress !== null && (
+        {progress !== null && (busy || completed) && (
           <div className={css.progress} role="status" aria-label={t('progressLabel')}>
             <div className={css.progressHeader}>
               <span>{statusLabel(progress, t)}</span>
@@ -351,6 +382,7 @@ export function RuntimeUpdateNotice({ check, install, status, readVersion, reloa
             {elapsed !== undefined && <p className={css.progressDetail}>{elapsed}</p>}
           </div>
         )}
+        {completed && <p className={css.status} role="status">{t('completed')}</p>}
         {busy && progress === null && <p className={css.status} role="status">{t('waiting')}</p>}
         {error !== null && <p className={css.error} role="alert">{error}</p>}
       </div>

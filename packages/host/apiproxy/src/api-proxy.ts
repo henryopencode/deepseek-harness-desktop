@@ -5,10 +5,11 @@
 
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
@@ -1088,6 +1089,29 @@ function webUpdateScript(root: string | undefined): string | undefined {
   if (root === undefined) return undefined
   const script = join(root, 'update.mjs')
   return existsSync(script) ? script : undefined
+}
+
+/** Read the version of the runtime process serving this request. */
+function runtimeVersion(): string {
+  const candidates = [
+    process.env.DSH_RUNTIME_ROOT === undefined
+      ? undefined
+      : join(process.env.DSH_RUNTIME_ROOT, 'package.json'),
+    join(dirname(fileURLToPath(import.meta.url)), '../../../../apps/cli/package.json'),
+  ]
+  for (const manifestPath of candidates) {
+    if (manifestPath === undefined || !existsSync(manifestPath)) continue
+    try {
+      const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      if (typeof manifest === 'object' && manifest !== null && 'version' in manifest) {
+        const version = (manifest as { version?: unknown }).version
+        if (typeof version === 'string' && version.length > 0) return version
+      }
+    } catch {
+      // A missing or unreadable manifest falls through to the stable fallback.
+    }
+  }
+  return '0.0.0'
 }
 
 /** Run the updater's read-only check and parse its JSON result. */
@@ -3013,10 +3037,9 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
     host: {
       describe(request) {
-        // TODO: version should read apps/cli's package.json; placeholder for now.
         const selection = defaults.defaultModelSelection()
         return Promise.resolve(ok(request, {
-          version: '0.0.1',
+          version: runtimeVersion(),
           // Same source as session.create's fallback: the UI's default project
           // must match where an unspecified-cwd session actually lands.
           cwd: defaults.cwd,

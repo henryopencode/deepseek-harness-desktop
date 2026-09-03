@@ -248,6 +248,21 @@ function forwardedSettings(ns: string): HostFrame {
 }
 
 describe('runtime update domain', () => {
+  it('reports the version of the runtime process serving host.describe', async () => {
+    const runtimeRoot = mkdtempSync(join(tmpdir(), 'dsh-runtime-version-'))
+    writeFileSync(join(runtimeRoot, 'package.json'), JSON.stringify({ version: '0.1.0-rc.test' }))
+    const previous = process.env.DSH_RUNTIME_ROOT
+    process.env.DSH_RUNTIME_ROOT = runtimeRoot
+    try {
+      const api = createApiProxy(await harness(), DEFAULTS)
+      expect(expectOk(await api.host.describe(request({})))).toMatchObject({ version: '0.1.0-rc.test' })
+    } finally {
+      if (previous === undefined) delete process.env.DSH_RUNTIME_ROOT
+      else process.env.DSH_RUNTIME_ROOT = previous
+      rmSync(runtimeRoot, { recursive: true, force: true })
+    }
+  })
+
   it('advertises remote installation only when the deployment enables it', async () => {
     const root = writeUpdateCheckScript({
       currentVersion: '0.1.0-rc.8',
