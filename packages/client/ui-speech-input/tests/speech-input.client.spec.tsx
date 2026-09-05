@@ -181,7 +181,7 @@ describe('Codex-style speech input', () => {
     render(<SpeechInput {...value} />)
     fireEvent.click(screen.getByRole('button', { name: '开始语音输入' }))
     fireEvent.click(await screen.findByRole('button', { name: '停止并转写' }))
-    expect(await screen.findByText('首次使用：正在下载并准备 base 模型…')).not.toBeNull()
+    expect(await screen.findByText('首次使用：正在准备本地语音识别（base）…')).not.toBeNull()
     settle?.({ ok: true, value: { text: '完成', model: 'base' } })
   })
 

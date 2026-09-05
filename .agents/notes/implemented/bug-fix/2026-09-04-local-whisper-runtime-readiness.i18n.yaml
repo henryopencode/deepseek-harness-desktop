@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-04-local-whisper-runtime-readiness.md
+2026-09-04-local-whisper-runtime-readiness.md: bfe33c1a67fa5348fc33f48d9353fe8356f11415
+2026-09-04-local-whisper-runtime-readiness.zh.md: fb5a1777b3d62d5f2279c9a0f6a2a40b1355bdf4

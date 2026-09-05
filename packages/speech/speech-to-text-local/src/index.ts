@@ -8,7 +8,7 @@
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { access, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -18,6 +18,7 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { availableMemoryBytes, resolveSpeechToTextModel } from './model.ts'
+import { isWhisperExecutableReady, requireWhisperExecutable } from './runtime.ts'
 import type {
   SpeechToTextDescription, SpeechToTextModel, SpeechToTextModelPreference,
   SpeechTranscriptionFailure, SpeechTranscriptionRequest, SpeechTranscriptionResult,
@@ -54,6 +55,9 @@ const MODEL_FILES: Record<SpeechToTextModel, string> = {
   small: 'ggml-small.bin',
 }
 const WHISPER_MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
+const GGML_HEADER_BYTES = 16
+const GGML_MAGIC = Buffer.from('lmgg')
+const modelLocks = new Map<string, Promise<void>>()
 
 /** Return one explicit failure branch. */
 function rejected(error: SpeechTranscriptionFailure): SpeechTranscriptionResult {
@@ -133,37 +137,71 @@ function requireConfigString(name: string, value: string): string {
   return value
 }
 
-/** Download one missing ggml model without asking nodejs-whisper to rebuild whisper.cpp. */
+/** Prepare one valid ggml model without asking nodejs-whisper to rebuild whisper.cpp. */
 async function ensureModel(
   root: string,
   model: SpeechToTextModel,
   autoDownload: boolean,
 ): Promise<void> {
   const filename = join(root, MODEL_FILES[model])
-  try {
-    await access(filename)
-    return
-  } catch {
-    if (!autoDownload) throw new Error(`Whisper model ${MODEL_FILES[model]} is missing.`)
+  const existing = modelLocks.get(filename)
+  if (existing !== undefined) {
+    await existing
+    if (await usableModel(filename)) return
+    return ensureModel(root, model, autoDownload)
   }
+  const operation = (async () => {
+    if (await usableModel(filename)) return
+    if (!autoDownload) throw new Error(`Whisper model ${MODEL_FILES[model]} is missing or invalid.`)
 
-  const temporary = join(root, `.${MODEL_FILES[model]}.${randomUUID()}.part`)
+    const temporary = join(root, `.${MODEL_FILES[model]}.${randomUUID()}.part`)
+    try {
+      const response = await fetch(`${WHISPER_MODEL_URL}/${MODEL_FILES[model]}`)
+      if (!response.ok) throw new Error(`Whisper model download failed with HTTP ${response.status}.`)
+      if (response.body === null) throw new Error('Whisper model download returned no body.')
+      await pipeline(
+        Readable.fromWeb(response.body as unknown as NodeReadableStream),
+        createWriteStream(temporary, { flags: 'wx', mode: 0o600 }),
+      )
+      if (!(await usableModel(temporary))) throw new Error(`Whisper model ${MODEL_FILES[model]} is invalid.`)
+      await rename(temporary, filename)
+    } catch (error) {
+      await rm(temporary, { force: true })
+      throw error
+    }
+  })()
+  modelLocks.set(filename, operation)
   try {
-    const response = await fetch(`${WHISPER_MODEL_URL}/${MODEL_FILES[model]}`)
-    if (!response.ok) throw new Error(`Whisper model download failed with HTTP ${response.status}.`)
-    if (response.body === null) throw new Error('Whisper model download returned no body.')
-    await pipeline(
-      Readable.fromWeb(response.body as unknown as NodeReadableStream),
-      createWriteStream(temporary, { flags: 'wx', mode: 0o600 }),
-    )
-    await rename(temporary, filename)
-  } catch (error) {
-    await rm(temporary, { force: true })
-    throw error
+    await operation
+  } finally {
+    if (modelLocks.get(filename) === operation) modelLocks.delete(filename)
   }
 }
 
-/** Local Whisper Remote; one process-wide model operation runs at a time. */
+/** Reject empty, partial, or non-Whisper downloads before they reach whisper.cpp. */
+async function usableModel(filename: string): Promise<boolean> {
+  let handle
+  try {
+    const file = await open(filename, 'r')
+    handle = file
+    const metadata = await file.stat()
+    if (!metadata.isFile() || metadata.size < GGML_HEADER_BYTES) return false
+    const header = Buffer.alloc(GGML_HEADER_BYTES)
+    const result = await file.read(header, 0, header.byteLength, 0)
+    if (result.bytesRead !== header.byteLength || !header.subarray(0, GGML_MAGIC.byteLength).equals(GGML_MAGIC)) return false
+    const vocabulary = header.readUInt32LE(4)
+    const audioContext = header.readUInt32LE(8)
+    return vocabulary > 0 && vocabulary <= 1_000_000 && audioContext > 0
+  } catch {
+    return false
+  } finally {
+    await handle?.close().catch(() => {
+      // The readiness check has already determined the result; no resource remains to recover.
+    })
+  }
+}
+
+/** Local Whisper Remote; transcription is serialized and model preparation is shared by path. */
 export class SpeechToTextLocalService extends TypertRemoteService {
   static Config: z<Config> = z.object({
     model: z.union([z.const('auto'), z.const('base'), z.const('small')]).required(),
@@ -197,13 +235,8 @@ export class SpeechToTextLocalService extends TypertRemoteService {
    */
   @Remote('describe')
   async describe(): Promise<SpeechToTextDescription> {
-    let modelReady = true
-    try {
-      await access(join(this.modelRootPath, MODEL_FILES[this.model]))
-    } catch {
-      // File absence is the advertised first-use state; other access failures surface on transcription.
-      modelReady = false
-    }
+    const modelReady = await usableModel(join(this.modelRootPath, MODEL_FILES[this.model]))
+      && await isWhisperExecutableReady()
     return {
       model: this.model,
       maxAudioBytes: this.config.maxAudioBytes,
@@ -243,6 +276,7 @@ export class SpeechToTextLocalService extends TypertRemoteService {
     let workingDirectory: string | undefined
     try {
       await mkdir(this.modelRootPath, { recursive: true })
+      await requireWhisperExecutable()
       await ensureModel(this.modelRootPath, this.model, this.config.autoDownload)
       workingDirectory = await mkdtemp(join(tmpdir(), 'dsh-speech-to-text-'))
       const inputPath = join(workingDirectory, 'recording.wav')
@@ -275,7 +309,7 @@ export class SpeechToTextLocalService extends TypertRemoteService {
       this.ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
       return rejected({
         code: 'transcription-failed',
-        message: 'Local transcription failed. Check the Whisper model download and local network.',
+        message: 'Local transcription is not ready. Retry once; if it continues, reinstall the runtime so Whisper can be prepared.',
       })
     } finally {
       this.busy = false

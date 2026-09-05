@@ -1,9 +1,47 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 
 const DSH_BIN_PATH = ['node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js']
 const WHISPER_CPP_PATH = ['node_modules', 'nodejs-whisper', 'cpp', 'whisper.cpp']
+
+/** Resolve the settings document used by a Web runtime installation. */
+export function resolveRuntimeSettingsPath(dshHome = process.env.DSH_HOME) {
+  const selectedHome = typeof dshHome === 'string' && dshHome.trim().length > 0
+    ? dshHome
+    : join(homedir(), '.dsh')
+  const expandedHome = selectedHome === '~'
+    ? homedir()
+    : selectedHome.startsWith('~/') || selectedHome.startsWith('~\\')
+      ? join(homedir(), selectedHome.slice(2))
+      : selectedHome
+  return join(resolve(expandedHome), 'settings.yaml')
+}
+
+/**
+ * Create the user's settings document from a release template when absent.
+ *
+ * The exclusive create preserves an existing document, including an empty
+ * document, and makes concurrent installers converge without overwriting one
+ * another's settings.
+ * @param {string} templatePath - Release-provided settings template.
+ * @param {{ dshHome?: string; settingsPath?: string }} [options] - Optional test or deployment paths.
+ * @returns {{ path: string; created: boolean }} The target and whether it was created.
+ */
+export function installSettingsTemplate(templatePath, options = {}) {
+  const settingsPath = resolve(options.settingsPath ?? resolveRuntimeSettingsPath(options.dshHome))
+  const template = readFileSync(templatePath, 'utf8')
+  if (template.trim().length === 0) throw new Error('settings template is empty')
+  mkdirSync(dirname(settingsPath), { recursive: true, mode: 0o700 })
+  try {
+    writeFileSync(settingsPath, template, { flag: 'wx', mode: 0o600 })
+    return { path: settingsPath, created: true }
+  } catch (error) {
+    if (error?.code === 'EEXIST') return { path: settingsPath, created: false }
+    throw error
+  }
+}
 
 /**
  * Return the CMake-produced Whisper executable for this operating system.
@@ -20,7 +58,15 @@ export function whisperExecutablePath(runtimeRoot) {
     join(sourceRoot, 'build', executable),
     join(sourceRoot, executable),
   ]
-  return candidates.find(existsSync)
+  return candidates.find(path => {
+    if (!existsSync(path)) return false
+    try {
+      accessSync(path, constants.X_OK)
+      return statSync(path).isFile()
+    } catch {
+      return false
+    }
+  })
 }
 
 /**
@@ -118,7 +164,11 @@ export async function installRuntimeDependencies(runtimeRoot, options = {}) {
   const command = options.runCommand ?? runCommand
   const npm = resolveNpmInvocation()
   options.onStep?.('dependencies')
-  const result = await command(npm.command, [...npm.args, 'install', '--no-audit', '--no-fund', '--omit=dev'], runtimeRoot)
+  const result = await command(
+    npm.command,
+    [...npm.args, 'install', '--legacy-peer-deps', '--no-audit', '--no-fund', '--omit=dev'],
+    runtimeRoot,
+  )
   if (result !== 0) throw new Error('Could not install runtime dependencies.')
   if (!existsSync(join(runtimeRoot, ...DSH_BIN_PATH))) throw new Error('Runtime dependency installation did not provide the dsh executable.')
   await ensureWhisperCli(runtimeRoot, { onStep: options.onStep, runCommand: command })

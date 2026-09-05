@@ -16,11 +16,11 @@
 | `maxAudioDurationMs` | 从 WAV 头读取后允许的最大时长。 |
 | `useGpu` | 允许 whisper.cpp 使用可用的 GPU 后端；随附 Web 配置仅在 macOS 启用。 |
 
-随附的 Web 组合明确选择 `base`，允许 4 MiB 与 60 秒，把模型下载到 Harness home，并且只在 macOS 启用 GPU 加速。Windows 和 Linux 使用随附的 CPU 后端。浏览器始终提供 whisper.cpp 所需的 PCM WAV。服务只有在接纳并写入录音后才解析 `nodejs-whisper`，所以桌面启动不会启动 Whisper。源码部署在 `autoDownload` 为 true 时需要网络；仅在没有 `whisper-cli` 时，`nodejs-whisper` 才会编译其随附的 whisper.cpp checkout。桌面包会提供平台原生的可执行文件，因此首次转写只下载所选模型。
+随附的 Web 组合明确选择 `base`，允许 4 MiB 与 60 秒，把模型下载到 Harness home，并且只在 macOS 启用 GPU 加速。Windows 和 Linux 使用随附的 CPU 后端。浏览器始终提供 whisper.cpp 所需的 PCM WAV。服务只有在接纳并写入录音后才解析 `nodejs-whisper`，所以桌面启动不会启动 Whisper。运行时安装会在服务接纳转写前准备并验证 `whisper-cli`；服务不会在录音请求中暗中启动 CMake 编译。源码部署在 `autoDownload` 为 true 时需要网络，并且首次录音前必须使用 CMake 与本机 C/C++ 工具链完成运行时安装。
 
 ## 失败与生命周期行为
 
-异常 base64、不支持的媒体类型、异常 WAV 头、过大的录音、过长的媒体和并发请求都会返回明确的业务失败。提供方、构建和模型错误统一折叠为 `transcription-failed`，Host 日志保留底层错误。服务只会写入一个生成的临时目录和 `modelRootPath`；无论成功还是失败都会删除临时目录。每次转写启动一个有限生命周期的 whisper.cpp 进程，因此进程退出后会释放模型内存。
+异常 base64、不支持的媒体类型、异常 WAV 头、过大的录音、过长的媒体和并发请求都会返回明确的业务失败。运行时未准备、提供方和模型错误返回 `transcription-failed`，Host 日志保留底层错误。服务只会写入一个生成的临时目录和 `modelRootPath`；无论成功还是失败都会删除临时目录。每次转写启动一个有限生命周期的 whisper.cpp 进程，因此进程退出后会释放模型内存。
 
 ## 模型体验
 
@@ -32,6 +32,6 @@
 
 ## 已知限制与延期工作
 
-- **首次使用可能较慢**：模型下载，以及源码部署未随附可执行文件时的 whisper.cpp 编译，都没有进度通道，浏览器只能显示准备状态。
+- **首次使用可能较慢**：模型下载没有超出浏览器准备状态的进度通道。本地 Whisper 编译属于运行时安装流程，会显示安装进度，不会在录音请求中意外阻塞。
 - **运行中的转写无法取消**：浏览器取消会在上传前结束录音，但 Remote 启动后，`nodejs-whisper` 不公开 abort signal。
-- **提供方需要可写的已安装包文件**：`nodejs-whisper` 会在自身已安装包目录中构建随附的 C++ 源码；只读安装必须预构建或替换该提供方。
+- **运行时安装需要可写的包目录**：归档未包含 `whisper-cli` 时，安装器会在已安装的 `nodejs-whisper` 包旁构建它。只读安装必须自行提供预构建的可执行文件。

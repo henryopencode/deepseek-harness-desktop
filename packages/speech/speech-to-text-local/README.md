@@ -16,11 +16,11 @@ A Host-local Whisper transcription Remote for browser recordings. `speechToTextL
 | `maxAudioDurationMs` | Maximum duration accepted from the WAV header. |
 | `useGpu` | Allow whisper.cpp to use its available GPU backend; the shipped Web configuration enables it only on macOS. |
 
-The shipped Web composition explicitly selects `base`, admits 4 MiB and 60 seconds, downloads models under the Harness home, and enables GPU acceleration only on macOS. Windows and Linux use the bundled CPU backend. The browser always supplies the PCM WAV required by whisper.cpp. The service resolves `nodejs-whisper` only after it has accepted and written a recording, so desktop startup does not start Whisper. A source deployment needs network access when `autoDownload` is true; `nodejs-whisper` compiles its bundled whisper.cpp checkout only when no `whisper-cli` exists. Desktop packages provide the platform-native executable, so their first transcription downloads only the selected model.
+The shipped Web composition explicitly selects `base`, admits 4 MiB and 60 seconds, downloads models under the Harness home, and enables GPU acceleration only on macOS. Windows and Linux use the bundled CPU backend. The browser always supplies the PCM WAV required by whisper.cpp. The service resolves `nodejs-whisper` only after it has accepted and written a recording, so desktop startup does not start Whisper. Runtime installation prepares and verifies `whisper-cli` before the service accepts transcription; the service never starts a hidden CMake build during a recording. A source deployment needs network access when `autoDownload` is true, and the runtime must be installed with CMake plus a native C/C++ toolchain before the first recording.
 
 ## Failure and lifetime behavior
 
-Malformed base64, unsupported media types, malformed WAV headers, oversized recordings, overlong media, and concurrent requests return explicit business failures. Provider, build, and model failures collapse to `transcription-failed` while the Host log retains the underlying error. The service writes only inside one generated temporary directory plus `modelRootPath`; it removes the temporary directory after success or failure. Each transcription launches a finite whisper.cpp process, so model memory is released when that process exits.
+Malformed base64, unsupported media types, malformed WAV headers, oversized recordings, overlong media, and concurrent requests return explicit business failures. Missing runtime preparation, provider failures, and model failures return `transcription-failed` while the Host log retains the underlying error. The service writes only inside one generated temporary directory plus `modelRootPath`; it removes the temporary directory after success or failure. Each transcription launches a finite whisper.cpp process, so model memory is released when that process exits.
 
 ## Model Experience
 
@@ -32,6 +32,6 @@ None; only a later user submission through the ordinary composer can place accep
 
 ## Known Limitations and Deferred Work
 
-- **First use can be slow** — model download, and source-only whisper.cpp compilation when no executable was shipped, have no progress channel beyond the browser's preparing state.
+- **First use can be slow** — model download has no progress channel beyond the browser's preparing state. Native Whisper compilation belongs to runtime installation, where its progress is visible; it never blocks unexpectedly inside a recording request.
 - **A running transcription is not cancellable** — browser cancellation ends recording before upload, but `nodejs-whisper` does not expose an abort signal after the Remote starts.
-- **The provider requires writable installed package files** — `nodejs-whisper` builds its bundled C++ source under its installed package directory; a read-only package installation must prebuild or replace the provider.
+- **Runtime installation requires writable package files** — the installer builds `whisper-cli` beside the installed `nodejs-whisper` package when the archive does not include it. A read-only package installation must provide a prebuilt executable.

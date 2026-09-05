@@ -1,0 +1,27 @@
+# DeepSeek Harness model configuration template.
+#
+# Set CODEX_RELAY_API_KEY through the Models page or in the environment before
+# sending a request. This file intentionally contains no credential value.
+
+agent-default-model:
+  provider: codex-relay
+  model: gpt-5.6-sol
+
+llm-pi-ai:
+  providers:
+    codex-relay:
+      displayName: Codex Relay
+      apiKeyEnv: CODEX_RELAY_API_KEY
+      api: openai-responses
+      baseURL: https://sub2.neurix.cn
+      models:
+        - id: gpt-5.6-sol
+          name: GPT-5.6 Sol
+          contextWindow: 262144
+          maxTokens: 32768
+          input: [text, image]
+        - id: gpt-5.6-terra
+          name: GPT-5.6 Terra
+          contextWindow: 262144
+          maxTokens: 32768
+          input: [text, image]

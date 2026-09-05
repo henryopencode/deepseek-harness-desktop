@@ -13,6 +13,7 @@ const required = [
   join(root, 'apps/cli/lib/bin.js'),
   join(root, 'apps/web/dist/index.html'),
   join(root, '.dsh-build/client-build-environment.json'),
+  join(root, 'apps/cli/config/settings.example.yaml'),
 ]
 for (const path of required) if (!existsSync(path)) throw new Error('missing official build artifact: ' + path)
 
@@ -95,18 +96,25 @@ writeFileSync(join(staging, 'install.mjs'), [
   "import { fileURLToPath } from 'node:url'",
   "import { isRuntimeInstalled } from './web-runtime-install.mjs'",
   "import { installRuntimeDependencies } from './web-runtime-install.mjs'",
+  "import { installSettingsTemplate } from './web-runtime-install.mjs'",
   "const webRuntimeRoot = dirname(fileURLToPath(import.meta.url))",
   "const current = JSON.parse(readFileSync(join(webRuntimeRoot, 'current.json'), 'utf8'))",
   "if (typeof current.version !== 'string') throw new Error('The extracted runtime has no active version')",
   "const runtimeRoot = join(webRuntimeRoot, 'versions', current.version)",
   "if (!existsSync(join(runtimeRoot, 'package.json'))) throw new Error('The extracted runtime is incomplete')",
   'await installRuntimeDependencies(runtimeRoot)',
+  "const templatePath = existsSync(join(webRuntimeRoot, 'settings.example.yaml'))",
+  "  ? join(webRuntimeRoot, 'settings.example.yaml')",
+  "  : join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'config', 'settings.example.yaml')",
+  "const settings = installSettingsTemplate(templatePath)",
+  "if (settings.created) console.log('Created default settings at ' + settings.path + '. Set CODEX_RELAY_API_KEY before sending requests.')",
 ].join('\n') + '\n')
 
 copyFileSync(join(root, 'scripts/web-runtime-manager.mjs'), join(staging, 'manage.mjs'))
 copyFileSync(join(root, 'scripts/web-runtime-manager.mjs'), join(staging, 'web-runtime-manager.mjs'))
 copyFileSync(join(root, 'scripts/web-runtime-update.mjs'), join(staging, 'update.mjs'))
 copyFileSync(join(root, 'scripts/web-runtime-install.mjs'), join(staging, 'web-runtime-install.mjs'))
+copyFileSync(join(root, 'apps/cli/config/settings.example.yaml'), join(staging, 'settings.example.yaml'))
 
 for (const [entry, command] of [['start.mjs', 'start'], ['stop.mjs', 'stop'], ['status.mjs', 'status']]) {
   writeFileSync(join(staging, entry), [
@@ -141,10 +149,10 @@ writeFileSync(join(staging, 'README.md'), [
   '',
   '1. Install Node.js 22.19 or newer (Node.js 24 is recommended).',
   '2. Extract this archive.',
-  '3. Run node install.mjs in the extracted directory. It resolves JavaScript dependencies and builds the local Whisper CLI; CMake plus a native C/C++ build toolchain are required for that step.',
+  '3. Run node install.mjs in the extracted directory. It resolves JavaScript dependencies, builds the local Whisper CLI, and creates settings.yaml from settings.example.yaml when no user settings exist; CMake plus a native C/C++ build toolchain are required for that step.',
   '4. Run node run.mjs web --no-open and open the printed URL. Omit --no-open for a local launch that opens the default browser.',
   '',
-  'User settings, credentials, sessions, workspaces, and the local Whisper model stay outside this archive in the normal Harness home. Set DSH_HOME when a separate data directory is required.',
+  'The release includes a no-key Codex relay model template with GPT-5.6 Sol and GPT-5.6 Terra image input enabled. Set CODEX_RELAY_API_KEY through the Models page or the environment before sending requests. User settings, credentials, sessions, workspaces, and the local Whisper model stay outside this archive in the normal Harness home. Set DSH_HOME when a separate data directory is required.',
   '',
   'For background operation, run node start.mjs, node status.mjs, and node stop.mjs. The PID file and log stay in .dsh-runtime inside this directory. Pass Web options to start.mjs, for example node start.mjs --port 8080.',
   '',
@@ -160,10 +168,10 @@ writeFileSync(join(staging, 'README.zh.md'), [
   '',
   '1. 安装 Node.js 22.19 或更高版本（推荐 Node.js 24）。',
   '2. 解压归档。',
-  '3. 在解压目录运行 node install.mjs。它会解析 JavaScript 依赖并构建本地 Whisper CLI；这一步需要 CMake 和本机 C/C++ 构建工具链。',
+  '3. 在解压目录运行 node install.mjs。它会解析 JavaScript 依赖、构建本地 Whisper CLI，并在没有用户设置时根据 settings.example.yaml 创建 settings.yaml；这一步需要 CMake 和本机 C/C++ 构建工具链。',
   '4. 运行 node run.mjs web --no-open，打开终端打印的 URL。本地启动时省略 --no-open 会自动打开默认浏览器。',
   '',
-  '用户设置、凭据、会话、工作区和本地 Whisper 模型保存在归档之外的 Harness home 中。如需独立数据目录，可设置 DSH_HOME。',
+  '发布包包含不带密钥的 Codex 中转站模型模板，并为 GPT-5.6 Sol 与 GPT-5.6 Terra 开启图片输入。发送请求前，请通过 Models 页面或环境变量设置 CODEX_RELAY_API_KEY。用户设置、凭据、会话、工作区和本地 Whisper 模型保存在归档之外的 Harness home 中。如需独立数据目录，可设置 DSH_HOME。',
   '',
   '如需后台运行，使用 node start.mjs、node status.mjs 和 node stop.mjs。PID 文件和日志保存在本目录的 .dsh-runtime 中。可在 start.mjs 后传入 Web 参数，例如 node start.mjs --port 8080。',
   '',

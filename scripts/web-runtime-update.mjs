@@ -32,6 +32,7 @@ class LifecycleOperationBusyError extends Error {
 const STABLE_RUNTIME_FILES = [
   'install.mjs', 'manage.mjs', 'run.mjs', 'start.mjs', 'status.mjs', 'stop.mjs',
   'update.mjs', 'update-config.json', 'web-runtime-install.mjs', 'web-runtime-manager.mjs',
+  'settings.example.yaml',
 ]
 
 function readJson(path) {

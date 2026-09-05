@@ -10,8 +10,16 @@ import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { nodewhisper } from 'nodejs-whisper'
 import SpeechToTextLocalService from '../src/index.ts'
 
+const runtime = vi.hoisted(() => ({ executableReady: true }))
+
 vi.mock('nodejs-whisper', () => ({
   nodewhisper: vi.fn(),
+}))
+vi.mock('../src/runtime.ts', () => ({
+  isWhisperExecutableReady: vi.fn(async () => runtime.executableReady),
+  requireWhisperExecutable: vi.fn(async () => {
+    if (!runtime.executableReady) throw new Error('test Whisper executable is unavailable')
+  }),
 }))
 
 let root: string | undefined
@@ -49,7 +57,11 @@ describe('local speech transcription through a real Loader composition', () => {
     const configPath = join(root, 'cordis.yml')
     const modelRoot = join(root, 'models')
     await mkdir(modelRoot)
-    await writeFile(join(modelRoot, 'ggml-base.bin'), 'model')
+    const model = Buffer.alloc(16)
+    model.write('lmgg')
+    model.writeUInt32LE(51_865, 4)
+    model.writeUInt32LE(1_500, 8)
+    await writeFile(join(modelRoot, 'ggml-base.bin'), model)
     await writeFile(configPath, [
       "- name: '@deepseek-ai/dsh-speech-to-text-local'",
       '  config:',
